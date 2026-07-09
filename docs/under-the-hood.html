@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nebula Arena — Under the Hood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=JetBrains+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #05050c;
+    --panel: rgba(12, 16, 32, 0.88);
+    --cyan: #00f0ff;
+    --magenta: #ff2d95;
+    --amber: #ff9f1c;
+    --violet: #a78bfa;
+    --green: #5cff9a;
+    --text: #e8ecff;
+    --muted: #8b93b8;
+    --border: rgba(0, 240, 255, 0.2);
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --display: "Orbitron", system-ui, sans-serif;
+    --body: "DM Sans", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(ellipse 90% 50% at 50% -10%, rgba(0, 240, 255, 0.12), transparent 55%),
+      radial-gradient(ellipse 50% 40% at 100% 50%, rgba(255, 45, 149, 0.08), transparent 50%),
+      radial-gradient(ellipse 40% 30% at 0% 80%, rgba(167, 139, 250, 0.08), transparent 50%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    line-height: 1.65;
+  }
+  .stars {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      radial-gradient(1px 1px at 8% 12%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1px 1px at 22% 48%, rgba(255,255,255,.35), transparent),
+      radial-gradient(1.5px 1.5px at 70% 18%, rgba(0,240,255,.5), transparent),
+      radial-gradient(1px 1px at 88% 62%, rgba(255,255,255,.4), transparent),
+      radial-gradient(1px 1px at 40% 80%, rgba(255,45,149,.4), transparent),
+      radial-gradient(1px 1px at 60% 35%, rgba(255,255,255,.3), transparent);
+  }
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 3rem 1.25rem 5rem;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    color: var(--cyan);
+    margin-bottom: 1rem;
+  }
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    margin: 0 0 0.75rem;
+    background: linear-gradient(120deg, var(--cyan), #fff 45%, var(--magenta));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .lead {
+    max-width: 38rem;
+    margin: 0 auto;
+    color: var(--muted);
+    font-size: 1.05rem;
+  }
+  nav.toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin: 1.75rem 0 0;
+  }
+  nav.toc a {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 0.35rem 0.65rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.25);
+    transition: color .15s, border-color .15s;
+  }
+  nav.toc a:hover { color: var(--cyan); border-color: var(--border); }
+
+  section {
+    margin: 2.5rem 0;
+    padding: 1.75rem 1.5rem;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 16px;
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+  }
+  h2 {
+    font-family: var(--display);
+    font-size: 1.05rem;
+    letter-spacing: 0.12em;
+    margin: 0 0 1rem;
+    color: var(--cyan);
+  }
+  h3 {
+    font-family: var(--display);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    margin: 1.5rem 0 0.6rem;
+    color: var(--violet);
+  }
+  p, li { color: #c5cbe8; }
+  p { margin: 0 0 1rem; }
+  p:last-child, ul:last-child { margin-bottom: 0; }
+  strong { color: #fff; font-weight: 600; }
+  code, .mono {
+    font-family: var(--mono);
+    font-size: 0.86em;
+  }
+  code {
+    padding: 0.12em 0.4em;
+    border-radius: 5px;
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--cyan);
+  }
+  pre {
+    margin: 1rem 0;
+    padding: 1rem 1.1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: #070712;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: #b8c0e0;
+  }
+  pre .c { color: #5a6488; }
+  pre .k { color: var(--magenta); }
+  pre .s { color: var(--green); }
+  pre .n { color: var(--amber); }
+  pre .f { color: var(--cyan); }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 640px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+  .card {
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(0,0,0,0.28);
+  }
+  .card h3 { margin-top: 0; }
+  .card p { font-size: 0.92rem; margin: 0; }
+
+  /* Architecture diagram */
+  .diagram {
+    margin: 1.25rem 0;
+    padding: 1.5rem 1rem;
+    border-radius: 14px;
+    background: #070712;
+    border: 1px solid rgba(0, 240, 255, 0.12);
+    overflow-x: auto;
+  }
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 280px;
+  }
+  .node {
+    width: min(100%, 420px);
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    border: 1px solid;
+  }
+  .node.peer {
+    border-color: var(--cyan);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--cyan);
+    box-shadow: 0 0 24px rgba(0, 240, 255, 0.08);
+  }
+  .node.relay {
+    border-color: var(--amber);
+    background: rgba(255, 159, 28, 0.08);
+    color: var(--amber);
+  }
+  .node.webrtc {
+    border-color: var(--green);
+    background: rgba(92, 255, 154, 0.08);
+    color: var(--green);
+  }
+  .node.game {
+    border-color: var(--magenta);
+    background: rgba(255, 45, 149, 0.08);
+    color: var(--magenta);
+  }
+  .arrow {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .peers-row {
+    display: flex;
+    gap: 0.75rem;
+    width: min(100%, 420px);
+    justify-content: center;
+  }
+  .peers-row .node { flex: 1; width: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    margin: 0.75rem 0;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  th {
+    font-family: var(--display);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  td.mono { color: var(--cyan); }
+  td:last-child { color: #c5cbe8; }
+
+  .pill {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--violet);
+  }
+
+  .callout {
+    margin: 1rem 0;
+    padding: 1rem 1.1rem;
+    border-left: 3px solid var(--cyan);
+    border-radius: 0 10px 10px 0;
+    background: rgba(0, 240, 255, 0.05);
+    font-size: 0.92rem;
+  }
+  .callout.warn {
+    border-left-color: var(--amber);
+    background: rgba(255, 159, 28, 0.06);
+  }
+
+  .steps {
+    counter-reset: step;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .steps li {
+    position: relative;
+    padding: 0.85rem 0 0.85rem 3rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .steps li:last-child { border-bottom: 0; }
+  .steps li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.85rem;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--bg);
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    font-weight: 600;
+  }
+  .steps strong { display: block; color: #fff; margin-bottom: 0.2rem; }
+
+  footer {
+    text-align: center;
+    margin-top: 2rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  footer a { color: var(--cyan); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  .timeline {
+    position: relative;
+    padding-left: 1.25rem;
+    margin: 1rem 0 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 0.3rem;
+    bottom: 0.3rem;
+    width: 2px;
+    background: linear-gradient(var(--cyan), var(--magenta));
+    opacity: 0.4;
+  }
+  .timeline .t {
+    position: relative;
+    padding: 0 0 1.1rem 1rem;
+  }
+  .timeline .t::before {
+    content: '';
+    position: absolute;
+    left: -1.25rem;
+    top: 0.4rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 10px var(--cyan);
+  }
+  .timeline .t:nth-child(even)::before { background: var(--magenta); box-shadow: 0 0 10px var(--magenta); }
+  .timeline .t .when {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--amber);
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<div class="stars" aria-hidden="true"></div>
+<div class="wrap">
+  <header>
+    <div class="badge">TECHNICAL DEEP DIVE</div>
+    <h1>NEBULA ARENA</h1>
+    <p class="lead">
+      How a real-time multiplayer space combat game runs with
+      <strong>zero game servers</strong> — only browsers, WebRTC, and Trystero’s Nostr matchmaking.
+    </p>
+    <nav class="toc">
+      <a href="#big-picture">Big picture</a>
+      <a href="#trystero">Trystero</a>
+      <a href="#signaling">Signaling</a>
+      <a href="#channels">Game channels</a>
+      <a href="#authority">Authority model</a>
+      <a href="#loop">Game loop</a>
+      <a href="#security">Security</a>
+      <a href="#run">How to run</a>
+    </nav>
+  </header>
+
+  <section id="big-picture">
+    <h2>01 · BIG PICTURE</h2>
+    <p>
+      <strong>Nebula Arena</strong> is a top-down dogfight: create a room code, share it, and every pilot’s
+      browser talks <em>directly</em> to every other pilot. The only “cloud” involvement is
+      <strong>signaling</strong> — a short handshake so peers can find each other. After that, ship positions,
+      bullets, hits, and kills ride encrypted WebRTC data channels peer-to-peer.
+    </p>
+    <div class="diagram">
+      <div class="flow">
+        <div class="peers-row">
+          <div class="node peer">Browser A<br/>Pilot “Nova”</div>
+          <div class="node peer">Browser B<br/>Pilot “Vex”</div>
+        </div>
+        <div class="arrow">▼ SDP / ICE offers via strategy medium ▼</div>
+        <div class="node relay">Nostr relays (Trystero default)<br/>signaling only · not game data</div>
+        <div class="arrow">▼ WebRTC connected · DTLS encrypted ▼</div>
+        <div class="node webrtc">RTCDataChannel mesh<br/>hello · state · fire · hit · kill</div>
+        <div class="arrow">▼ each client simulates locally ▼</div>
+        <div class="node game">Canvas game loop @ ~60fps<br/>interpolate remotes · own ship authoritative</div>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>Key insight:</strong> hosting the static site (Vite build) only serves HTML/JS/CSS.
+      It never sees your shots, positions, or scores. Close the tab and that peer is gone — there’s no backend world state.
+    </div>
+  </section>
+
+  <section id="trystero">
+    <h2>02 · WHAT TRYSTERO GIVES US</h2>
+    <p>
+      <a href="https://github.com/dmotz/trystero" style="color:var(--cyan)">Trystero</a> wraps the painful parts of WebRTC multiplayer:
+      room namespaces, automatic serialization, action channels, and pluggable
+      <strong>strategies</strong> for peer discovery (Nostr, BitTorrent trackers, MQTT, Firebase, Supabase, IPFS, custom WS relay).
+    </p>
+    <div class="grid-2">
+      <div class="card">
+        <h3>joinRoom(config, roomId)</h3>
+        <p>Puts this browser into a named room. Anyone with the same <code>appId</code> + <code>roomId</code> can discover each other.</p>
+      </div>
+      <div class="card">
+        <h3>makeAction(name)</h3>
+        <p>Creates a typed pub/sub (or request/response) channel over the mesh. We use one-way messages for game events.</p>
+      </div>
+      <div class="card">
+        <h3>onPeerJoin / onPeerLeave</h3>
+        <p>Presence hooks. We send a <code>hello</code> intro when someone joins so they get our callsign and color.</p>
+      </div>
+      <div class="card">
+        <h3>selfId</h3>
+        <p>Stable local peer ID for this browser session — used as ship owner IDs and bullet prefixes.</p>
+      </div>
+    </div>
+    <h3>How we join</h3>
+<pre><span class="k">import</span> { joinRoom, selfId } <span class="k">from</span> <span class="s">'trystero'</span>
+
+<span class="k">const</span> room = <span class="f">joinRoom</span>(
+  { appId: <span class="s">'nebula-arena-p2pgame-v1'</span> },
+  roomCode  <span class="c">// e.g. "K7X2MP"</span>
+)
+
+<span class="k">const</span> state = room.<span class="f">makeAction</span>(<span class="s">'state'</span>)
+state.<span class="f">send</span>({ x, y, vx, vy, angle, hp, score, alive, … })
+state.onMessage = (msg, { peerId }) => { <span class="c">/* interpolate remote ship */</span> }</pre>
+  </section>
+
+  <section id="signaling">
+    <h2>03 · SIGNALING: HOW PEERS FIND EACH OTHER</h2>
+    <p>
+      WebRTC cannot open a direct path cold. Peers must exchange <strong>SDP</strong> (session description)
+      and <strong>ICE candidates</strong> (possible network paths). That exchange is signaling.
+      Trystero does it for us over Nostr by default.
+    </p>
+    <ol class="steps">
+      <li>
+        <strong>Room announce</strong>
+        Both browsers connect to public Nostr relays and publish encrypted offer/answer payloads
+        on topics derived from <code>appId</code> + <code>roomId</code>.
+      </li>
+      <li>
+        <strong>SDP handshake</strong>
+        One peer’s offer is answered by the other. ICE gathers host / srflx / relay candidates
+        (STUN helps discover public addresses).
+      </li>
+      <li>
+        <strong>DTLS + data channel</strong>
+        Once ICE succeeds, a secure RTCDataChannel opens. Trystero multiplexes our named actions on it.
+      </li>
+      <li>
+        <strong>Game traffic stays P2P</strong>
+        Positions and bullets never go to Nostr again. Relays only helped set up the call.
+      </li>
+    </ol>
+    <div class="callout warn">
+      <strong>NAT reality check:</strong> some network pairs can’t punch through. Production apps often add a TURN server
+      via Trystero’s <code>turnConfig</code> — data still end-to-end encrypted; TURN only relays ciphertext.
+      Same-machine two-tab testing almost always works.
+    </div>
+  </section>
+
+  <section id="channels">
+    <h2>04 · GAME CHANNELS (ACTIONS)</h2>
+    <p>
+      Nebula Arena defines five lightweight actions. All payloads are plain JSON objects —
+      Trystero serializes and chunks automatically.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Action</th>
+          <th>When</th>
+          <th>Payload (concept)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">hello</td>
+          <td>On join / introduce</td>
+          <td><span class="pill">name</span> <span class="pill">color</span> <span class="pill">score</span></td>
+        </tr>
+        <tr>
+          <td class="mono">state</td>
+          <td>~20 Hz while playing</td>
+          <td><span class="pill">x,y,vx,vy</span> <span class="pill">angle</span> <span class="pill">hp</span> <span class="pill">alive</span> <span class="pill">seq</span></td>
+        </tr>
+        <tr>
+          <td class="mono">fire</td>
+          <td>Each shot</td>
+          <td><span class="pill">bullet id</span> <span class="pill">origin</span> <span class="pill">velocity</span></td>
+        </tr>
+        <tr>
+          <td class="mono">hit</td>
+          <td>Shooter detects impact</td>
+          <td><span class="pill">targetId</span> <span class="pill">damage</span> <span class="pill">bulletId</span></td>
+        </tr>
+        <tr>
+          <td class="mono">kill</td>
+          <td>Destroy confirmed</td>
+          <td><span class="pill">killer</span> <span class="pill">victim</span> names for feed</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Why not stream the whole world?</h3>
+    <p>
+      Bandwidth and latency favor <strong>small, frequent state</strong> plus <strong>eventful shots</strong>.
+      Each client runs its own physics for local bullets and ships; remotes are visual replicas driven by snapshots.
+    </p>
+  </section>
+
+  <section id="authority">
+    <h2>05 · AUTHORITY &amp; FAIRNESS MODEL</h2>
+    <p>
+      Fully server-authoritative games need a host. We chose a classic P2P pattern that feels good for small arenas:
+    </p>
+    <div class="grid-2">
+      <div class="card">
+        <h3>You own your ship</h3>
+        <p>Only your client decides your thrust, aim, and local position. You broadcast the result at 20&nbsp;Hz with a sequence number so old packets can’t rewind you.</p>
+      </div>
+      <div class="card">
+        <h3>Shooter-side hits</h3>
+        <p>Your bullets are simulated on every peer, but <em>you</em> detect collisions with remotes and send <code>hit</code>. The victim applies damage (and can ignore duplicates via bullet id).</p>
+      </div>
+      <div class="card">
+        <h3>Interpolation</h3>
+        <p>Remote ships don’t teleport: we blend from last pose → newest snapshot with smoothstep so 20&nbsp;Hz looks like 60&nbsp;fps motion.</p>
+      </div>
+      <div class="card">
+        <h3>Trust model</h3>
+        <p>Friends/LAN/demo first. A cheater could lie about hits — competitive ranked play would need a host peer or server. For a serverless toy arena, this is the right tradeoff.</p>
+      </div>
+    </div>
+    <div class="timeline">
+      <div class="t">
+        <div class="when">T+0ms</div>
+        You press fire → local bullet spawns → <code>fire</code> action floods peers
+      </div>
+      <div class="t">
+        <div class="when">T+~30–80ms</div>
+        Peers spawn the same bullet vector; everyone sees the shot
+      </div>
+      <div class="t">
+        <div class="when">T+hit</div>
+        Your client: distance(bullet, remote) &lt; radius → send <code>hit</code>
+      </div>
+      <div class="t">
+        <div class="when">T+hit+RTT/2</div>
+        Victim reduces HP; if HP≤0 → death, respawn timer, killer increments score
+      </div>
+    </div>
+  </section>
+
+  <section id="loop">
+    <h2>06 · CLIENT GAME LOOP</h2>
+    <p>
+      One <code>requestAnimationFrame</code> loop drives everything. Network is event-driven; simulation is frame-driven.
+    </p>
+<pre><span class="c">// each frame (~16ms)</span>
+<span class="f">update</span>(dt):
+  interpolate remote ships from snapshot A → B
+  if dead: countdown respawn
+  else: apply WASD thrust, drag, boost, clamp to arena
+        aim toward mouse world position
+        fire if cooldown ready
+  integrate bullets &amp; particles
+  local hit-tests for <span class="n">my</span> bullets vs remotes
+  every 50ms: broadcast state snapshot
+
+<span class="f">draw</span>():
+  camera follow local ship
+  nebula backdrop + grid + boundary glow
+  particles → bullets → ships → nameplates
+  HUD bars / scoreboard / crosshair (DOM + canvas)</pre>
+    <h3>File map</h3>
+    <table>
+      <thead>
+        <tr><th>File</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">src/net.ts</td><td>Trystero room + five actions</td></tr>
+        <tr><td class="mono">src/game.ts</td><td>Simulation, combat, rendering</td></tr>
+        <tr><td class="mono">src/input.ts</td><td>Keyboard + pointer state</td></tr>
+        <tr><td class="mono">src/main.ts</td><td>Lobby UI, lifecycle, deep links <code>?room=</code></td></tr>
+        <tr><td class="mono">src/types.ts</td><td>Shared wire &amp; entity types</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="security">
+    <h2>07 · ENCRYPTION &amp; PRIVACY</h2>
+    <ul>
+      <li><strong>Signaling:</strong> Trystero encrypts SDP with a key derived from <code>appId</code> + room id (optional stronger shared <code>password</code>).</li>
+      <li><strong>Media path:</strong> WebRTC data channels use DTLS — eavesdroppers on the path see ciphertext.</li>
+      <li><strong>Room codes:</strong> Six-character codes are unguessable enough for casual play; treat them like invite links.</li>
+      <li><strong>No accounts:</strong> Callsign is localStorage vanity only; <code>selfId</code> is ephemeral to the session.</li>
+    </ul>
+  </section>
+
+  <section id="run">
+    <h2>08 · RUN IT YOURSELF</h2>
+<pre>git clone &lt;your-repo&gt; p2pgame
+cd p2pgame
+npm install
+npm run dev
+<span class="c"># open http://localhost:5173</span>
+<span class="c"># Create Arena → Copy link → second tab/window → dogfight</span></pre>
+    <p>
+      <strong>Controls:</strong> WASD move · mouse aim · click/space fire · shift boost · Esc leave.
+    </p>
+    <div class="callout">
+      Two tabs on one machine is the fastest proof that Trystero matchmaking + your game protocol work end-to-end —
+      no friend, no deploy, no TURN required for local testing.
+    </div>
+  </section>
+
+  <footer>
+    Built with <a href="https://github.com/dmotz/trystero">Trystero</a>
+    · Nebula Arena P2P demo
+    · Under-the-hood guide for humans who like packets
+  </footer>
+</div>
+</body>
+</html>

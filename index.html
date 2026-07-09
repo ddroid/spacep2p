@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nebula Arena — P2P Space Combat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Lobby -->
+      <section id="lobby" class="screen">
+        <div class="stars" aria-hidden="true"></div>
+        <div class="lobby-card">
+          <div class="logo">
+            <div class="logo-ring"></div>
+            <div class="logo-core"></div>
+          </div>
+          <h1>NEBULA ARENA</h1>
+          <p class="tagline">
+            Real-time multiplayer space combat.<br />
+            <span>No servers. Pure peer-to-peer via Trystero.</span>
+          </p>
+
+          <label class="field">
+            <span>Callsign</span>
+            <input
+              id="name-input"
+              type="text"
+              maxlength="16"
+              placeholder="Pilot name"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+
+          <div class="actions">
+            <button id="btn-create" class="btn primary" type="button">
+              Create Arena
+            </button>
+            <div class="divider"><span>or join</span></div>
+            <div class="join-row">
+              <input
+                id="room-input"
+                type="text"
+                maxlength="6"
+                placeholder="ROOM CODE"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button id="btn-join" class="btn" type="button">Join</button>
+            </div>
+          </div>
+
+          <p id="lobby-status" class="status" hidden></p>
+
+          <ul class="feature-list">
+            <li>WebRTC data channels · end-to-end encrypted</li>
+            <li>Matchmaking over Nostr relays (no game server)</li>
+            <li>Share a room code · open a second tab to test</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Game -->
+      <section id="game" class="screen" hidden>
+        <canvas id="canvas"></canvas>
+
+        <div id="hud">
+          <div class="hud-top">
+            <div class="hud-panel">
+              <div class="hud-label">ARENA</div>
+              <div id="room-code" class="hud-value mono">------</div>
+              <button id="btn-copy" class="btn-tiny" type="button" title="Copy room link">
+                COPY
+              </button>
+            </div>
+            <div class="hud-panel center">
+              <div class="hud-label">STATUS</div>
+              <div id="net-status" class="hud-value">CONNECTING…</div>
+            </div>
+            <div class="hud-panel right">
+              <div class="hud-label">PILOTS</div>
+              <div id="peer-count" class="hud-value">1</div>
+            </div>
+          </div>
+
+          <div class="hud-bottom">
+            <div class="vitals">
+              <div class="bar-wrap">
+                <span>HULL</span>
+                <div class="bar"><div id="hp-bar" class="bar-fill hp"></div></div>
+              </div>
+              <div class="bar-wrap">
+                <span>BOOST</span>
+                <div class="bar"><div id="boost-bar" class="bar-fill boost"></div></div>
+              </div>
+            </div>
+            <div id="scoreboard" class="scoreboard"></div>
+            <div class="controls-hint">
+              <kbd>WASD</kbd> move · <kbd>Mouse</kbd> aim · <kbd>Click</kbd>/<kbd>Space</kbd>
+              fire · <kbd>Shift</kbd> boost · <kbd>Esc</kbd> leave
+            </div>
+          </div>
+        </div>
+
+        <div id="kill-feed"></div>
+        <div id="toast" hidden></div>
+
+        <div id="respawn-overlay" hidden>
+          <div class="respawn-card">
+            <h2>SHIP DESTROYED</h2>
+            <p id="respawn-timer">Respawning in 3…</p>
+          </div>
+        </div>
+
+        <button id="btn-leave" class="btn-leave" type="button">Leave Arena</button>
+      </section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
