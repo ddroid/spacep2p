@@ -716,20 +716,21 @@ input:focus {
 .touch-actions {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 0.65rem;
   pointer-events: auto;
-  margin-bottom: 1.4rem;
+  margin-bottom: 0.35rem;
 }
 
 .touch-btn {
-  width: 72px;
-  height: 72px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(5, 8, 18, 0.55);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 0.58rem;
+  font-size: 0.62rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   touch-action: none;
@@ -748,12 +749,11 @@ input:focus {
 }
 
 .touch-btn.boost {
-  width: 58px;
-  height: 58px;
-  align-self: center;
+  width: 64px;
+  height: 64px;
   border-color: rgba(255, 159, 28, 0.45);
   color: #ffd29a;
-  font-size: 0.5rem;
+  font-size: 0.52rem;
 }
 
 .touch-btn.active {
@@ -831,12 +831,12 @@ input:focus {
   }
 
   .touch-btn.fire {
-    width: 64px;
-    height: 64px;
+    width: 78px;
+    height: 78px;
   }
 
   .touch-btn.boost {
-    width: 52px;
-    height: 52px;
+    width: 56px;
+    height: 56px;
   }
 }

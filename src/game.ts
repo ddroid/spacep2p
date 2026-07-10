@@ -523,10 +523,14 @@ export class Game {
     this.me.x = clamp(this.me.x, SHIP_R, WORLD.w - SHIP_R)
     this.me.y = clamp(this.me.y, SHIP_R, WORLD.h - SHIP_R)
 
-    // Aim — input stores device-pixel coords (canvas.width space)
-    const mx = this.cam.x + this.input.mouseX / this.dpr
-    const my = this.cam.y + this.input.mouseY / this.dpr
-    this.me.angle = Math.atan2(my - this.me.y, mx - this.me.x)
+    // Aim — face thrust when on touch controls; otherwise mouse
+    if (this.input.aimFromMovement && thrusting) {
+      this.me.angle = Math.atan2(ay, ax)
+    } else {
+      const mx = this.cam.x + this.input.mouseX / this.dpr
+      const my = this.cam.y + this.input.mouseY / this.dpr
+      this.me.angle = Math.atan2(my - this.me.y, mx - this.me.x)
+    }
 
     this.me.thrusting = thrusting
     this.me.boosting = wantBoost

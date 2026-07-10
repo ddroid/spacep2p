@@ -24,7 +24,7 @@ npm run dev
 | **Shift** | Boost |
 | **Esc** | Leave arena |
 
-On phones/tablets: **left stick** move · **right stick** aim · **FIRE** / **BOOST** buttons.
+On phones/tablets: **left stick** move (also aims) · **FIRE** / **BOOST** on the right.
 
 ## Stack
 
