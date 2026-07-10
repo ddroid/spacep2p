@@ -24,6 +24,8 @@ npm run dev
 | **Shift** | Boost |
 | **Esc** | Leave arena |
 
+On phones/tablets: **left stick** move · **right stick** aim · **FIRE** / **BOOST** buttons.
+
 ## Stack
 
 - **Vite + TypeScript** — build tooling
@@ -43,6 +45,17 @@ npm run dev
 Each peer is authoritative for their own ship. Remote ships are interpolated between state snapshots. Hit detection is shooter-side; the victim applies damage when they receive a `hit`.
 
 Static files only need a host that serves the SPA — game traffic never goes through your server after the page loads.
+
+## TURN (mobile / cross-network)
+
+Peers on the same Wi‑Fi often connect with STUN alone. Mobile data and some NATs need a **TURN** relay. Without it you’ll see:
+
+`LINK ERROR: could not connect to peer … configure TURN servers`
+
+1. Copy `.env.example` → `.env` and fill in credentials from [Metered Open Relay](https://www.metered.ca/tools/openrelay/) (free) or [Cloudflare TURN](https://developers.cloudflare.com/realtime/turn/).
+2. Rebuild / redeploy so Vite embeds `VITE_TURN_*`.
+
+On Dokploy, add the same `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL` as build environment variables.
 
 ## Scripts
 

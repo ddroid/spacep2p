@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>Nebula Arena — P2P Space Combat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -103,10 +106,41 @@
               </div>
             </div>
             <div id="scoreboard" class="scoreboard"></div>
-            <div class="controls-hint">
+            <div class="controls-hint desktop-only">
               <kbd>WASD</kbd> move · <kbd>Mouse</kbd> aim · <kbd>Click</kbd>/<kbd>Space</kbd>
               fire · <kbd>Shift</kbd> boost · <kbd>Esc</kbd> leave
             </div>
+          </div>
+        </div>
+
+        <div id="touch-controls" aria-hidden="true">
+          <div
+            id="stick-move"
+            class="stick"
+            role="presentation"
+            aria-label="Move"
+          >
+            <div class="stick-ring"></div>
+            <div class="stick-knob"></div>
+            <span class="stick-label">MOVE</span>
+          </div>
+          <div class="touch-actions">
+            <button id="btn-boost" class="touch-btn boost" type="button" aria-label="Boost">
+              BOOST
+            </button>
+            <button id="btn-fire" class="touch-btn fire" type="button" aria-label="Fire">
+              FIRE
+            </button>
+          </div>
+          <div
+            id="stick-aim"
+            class="stick"
+            role="presentation"
+            aria-label="Aim"
+          >
+            <div class="stick-ring"></div>
+            <div class="stick-knob"></div>
+            <span class="stick-label">AIM</span>
           </div>
         </div>
 

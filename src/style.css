@@ -29,6 +29,8 @@ body {
   color: var(--text);
   font-family: var(--font-display);
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #app {
@@ -638,18 +640,150 @@ input:focus {
   padding-right: 6.5rem;
 }
 
+/* —— Mobile touch controls —— */
+
+#touch-controls {
+  display: none;
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 7;
+  pointer-events: none;
+  padding: 0 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.stick {
+  position: relative;
+  width: 118px;
+  height: 118px;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stick-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 240, 255, 0.08), transparent 62%),
+    rgba(5, 8, 18, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 8px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.stick.active .stick-ring {
+  border-color: rgba(0, 240, 255, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 0 24px rgba(0, 240, 255, 0.18);
+}
+
+.stick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 35% 30%, rgba(232, 236, 255, 0.95), rgba(0, 240, 255, 0.55));
+  box-shadow:
+    0 0 16px rgba(0, 240, 255, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.stick-label {
+  position: absolute;
+  left: 50%;
+  bottom: -1.15rem;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.16em;
+  color: rgba(139, 147, 184, 0.85);
+  pointer-events: none;
+}
+
+.touch-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  pointer-events: auto;
+  margin-bottom: 1.4rem;
+}
+
+.touch-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(5, 8, 18, 0.55);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.touch-btn.fire {
+  border-color: rgba(255, 45, 149, 0.45);
+  color: #ff9ec8;
+  box-shadow:
+    0 0 18px rgba(255, 45, 149, 0.15),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.touch-btn.boost {
+  width: 58px;
+  height: 58px;
+  align-self: center;
+  border-color: rgba(255, 159, 28, 0.45);
+  color: #ffd29a;
+  font-size: 0.5rem;
+}
+
+.touch-btn.active {
+  transform: scale(0.94);
+}
+
+.touch-btn.fire.active {
+  background: rgba(255, 45, 149, 0.28);
+  box-shadow: 0 0 28px rgba(255, 45, 149, 0.35);
+}
+
+.touch-btn.boost.active {
+  background: rgba(255, 159, 28, 0.28);
+  box-shadow: 0 0 24px rgba(255, 159, 28, 0.35);
+}
+
 @media (max-width: 720px) {
   .hud-bottom {
     grid-template-columns: 1fr;
     gap: 0.6rem;
+    padding-bottom: 9.5rem;
   }
 
-  .controls-hint {
+  .desktop-only {
     display: none;
   }
 
   .scoreboard {
     order: -1;
+    max-width: 100%;
   }
 
   .hud-panel.center .hud-value {
@@ -658,5 +792,51 @@ input:focus {
 
   .lobby-card {
     padding: 1.75rem 1.25rem 1.4rem;
+  }
+
+  #touch-controls {
+    display: flex;
+  }
+
+  #kill-feed {
+    top: 4.2rem;
+    max-width: min(240px, 46vw);
+  }
+}
+
+/* Coarse pointer / no hover → phone/tablet even if wide */
+@media (hover: none) and (pointer: coarse) {
+  #touch-controls {
+    display: flex;
+  }
+
+  .hud-bottom {
+    padding-bottom: 9.5rem;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .stick {
+    width: 104px;
+    height: 104px;
+  }
+
+  .stick-knob {
+    width: 38px;
+    height: 38px;
+  }
+
+  .touch-btn.fire {
+    width: 64px;
+    height: 64px;
+  }
+
+  .touch-btn.boost {
+    width: 52px;
+    height: 52px;
   }
 }

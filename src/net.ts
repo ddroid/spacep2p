@@ -46,12 +46,34 @@ export function createRoomCode(): string {
   return randomRoomCode()
 }
 
+/** TURN servers for peers behind strict NAT (mobile data, CGNAT). */
+function getTurnConfig():
+  | { urls: string[]; username: string; credential: string }[]
+  | undefined {
+  const urlsRaw = import.meta.env.VITE_TURN_URLS as string | undefined
+  const username = import.meta.env.VITE_TURN_USERNAME as string | undefined
+  const credential = import.meta.env.VITE_TURN_CREDENTIAL as string | undefined
+  if (!urlsRaw?.trim() || !username || !credential) return undefined
+
+  const urls = urlsRaw
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean)
+  if (urls.length === 0) return undefined
+
+  return [{ urls, username, credential }]
+}
+
 export function connectRoom(
   roomId: string,
   handlers: NetHandlers,
 ): NetSession {
+  const turnConfig = getTurnConfig()
   const room = joinRoom(
-    { appId: APP_ID },
+    {
+      appId: APP_ID,
+      ...(turnConfig ? { turnConfig } : {}),
+    },
     roomId.toUpperCase(),
     {
       onJoinError: (details) => {

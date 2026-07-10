@@ -130,7 +130,12 @@ async function enterArena(roomId: string) {
   try {
     const name = getName()
     const ui = buildUI()
-    const input = createInput(canvas)
+    const input = createInput(canvas, {
+      move: document.getElementById('stick-move')!,
+      aim: document.getElementById('stick-aim')!,
+      fire: document.getElementById('btn-fire')!,
+      boost: document.getElementById('btn-boost')!,
+    })
     inputCleanup = input.destroy
 
     const net = connectRoom(roomId, {
