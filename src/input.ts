@@ -8,22 +8,21 @@ export type InputState = {
   mouseX: number
   mouseY: number
   pointerDown: boolean
-  /** When true, ship faces thrust direction instead of mouse/aim stick. */
-  aimFromMovement: boolean
 }
 
 const STICK_DEADZONE = 0.22
 const AIM_RADIUS_CSS = 120
 
-type TouchIds = {
+type StickIds = {
   move: HTMLElement
+  aim: HTMLElement
   fire: HTMLElement
   boost: HTMLElement
 }
 
 export function createInput(
   canvas: HTMLCanvasElement,
-  touch?: TouchIds,
+  touch?: StickIds,
 ): {
   state: InputState
   destroy: () => void
@@ -38,7 +37,6 @@ export function createInput(
     mouseX: canvas.width / 2,
     mouseY: canvas.height / 2,
     pointerDown: false,
-    aimFromMovement: !!touch,
   }
 
   let keyFire = false
@@ -46,25 +44,11 @@ export function createInput(
   let canvasFire = false
   let keyBoost = false
   let touchBoost = false
-  let lastAimX = 0
-  let lastAimY = -1
 
   const syncFireBoost = () => {
     state.fire = keyFire || touchFire || canvasFire
     state.boost = keyBoost || touchBoost
   }
-
-  const writeAimFromDir = (nx: number, ny: number) => {
-    lastAimX = nx
-    lastAimY = ny
-    const rect = canvas.getBoundingClientRect()
-    const cssX = rect.width / 2 + nx * AIM_RADIUS_CSS
-    const cssY = rect.height / 2 + ny * AIM_RADIUS_CSS
-    state.mouseX = (cssX / rect.width) * canvas.width
-    state.mouseY = (cssY / rect.height) * canvas.height
-  }
-
-  if (touch) writeAimFromDir(lastAimX, lastAimY)
 
   const setKey = (code: string, pressed: boolean) => {
     switch (code) {
@@ -105,13 +89,13 @@ export function createInput(
   const onKeyUp = (e: KeyboardEvent) => setKey(e.code, false)
 
   const onPointerMove = (e: PointerEvent) => {
-    if (e.pointerType === 'touch' || state.aimFromMovement) return
+    if (e.pointerType === 'touch') return
     const rect = canvas.getBoundingClientRect()
     state.mouseX = ((e.clientX - rect.left) / rect.width) * canvas.width
     state.mouseY = ((e.clientY - rect.top) / rect.height) * canvas.height
   }
   const onPointerDown = (e: PointerEvent) => {
-    if (e.pointerType === 'touch' || state.aimFromMovement) return
+    if (e.pointerType === 'touch') return
     if (e.button === 0) {
       state.pointerDown = true
       canvasFire = true
@@ -120,7 +104,7 @@ export function createInput(
     }
   }
   const onPointerUp = (e: PointerEvent) => {
-    if (e.pointerType === 'touch' || state.aimFromMovement) return
+    if (e.pointerType === 'touch') return
     if (e.button === 0) {
       state.pointerDown = false
       canvasFire = false
@@ -147,7 +131,8 @@ export function createInput(
 
   if (touch) {
     cleanups.push(
-      bindMoveStick(touch.move, state, writeAimFromDir),
+      bindMoveStick(touch.move, state),
+      bindAimStick(touch.aim, canvas, state),
       bindHoldButton(touch.fire, (down) => {
         touchFire = down
         syncFireBoost()
@@ -178,7 +163,7 @@ function stickVector(
   el: HTMLElement,
   clientX: number,
   clientY: number,
-): { x: number; y: number; knobX: number; knobY: number } {
+): { x: number; y: number; knobX: number; knobY: number; max: number } {
   const rect = el.getBoundingClientRect()
   const cx = rect.left + rect.width / 2
   const cy = rect.top + rect.height / 2
@@ -195,6 +180,7 @@ function stickVector(
     y: max > 0 ? dy / max : 0,
     knobX: dx,
     knobY: dy,
+    max,
   }
 }
 
@@ -206,11 +192,7 @@ function setKnob(el: HTMLElement, x: number, y: number) {
   el.classList.toggle('active', x !== 0 || y !== 0)
 }
 
-function bindMoveStick(
-  el: HTMLElement,
-  state: InputState,
-  writeAimFromDir: (nx: number, ny: number) => void,
-): () => void {
+function bindMoveStick(el: HTMLElement, state: InputState): () => void {
   let pointerId: number | null = null
 
   const apply = (x: number, y: number) => {
@@ -225,7 +207,6 @@ function bindMoveStick(
     state.right = nx > 0.35
     state.up = ny < -0.35
     state.down = ny > 0.35
-    writeAimFromDir(nx, ny)
   }
 
   const onDown = (e: PointerEvent) => {
@@ -249,6 +230,67 @@ function bindMoveStick(
     pointerId = null
     setKnob(el, 0, 0)
     state.up = state.down = state.left = state.right = false
+  }
+
+  el.addEventListener('pointerdown', onDown)
+  el.addEventListener('pointermove', onMove)
+  el.addEventListener('pointerup', onUp)
+  el.addEventListener('pointercancel', onUp)
+
+  return () => {
+    el.removeEventListener('pointerdown', onDown)
+    el.removeEventListener('pointermove', onMove)
+    el.removeEventListener('pointerup', onUp)
+    el.removeEventListener('pointercancel', onUp)
+    setKnob(el, 0, 0)
+  }
+}
+
+function bindAimStick(
+  el: HTMLElement,
+  canvas: HTMLCanvasElement,
+  state: InputState,
+): () => void {
+  let pointerId: number | null = null
+  let lastX = 0
+  let lastY = -0.85
+
+  const writeAim = (x: number, y: number) => {
+    const mag = Math.hypot(x, y)
+    if (mag >= STICK_DEADZONE) {
+      lastX = x / mag
+      lastY = y / mag
+    }
+    const rect = canvas.getBoundingClientRect()
+    const cssX = rect.width / 2 + lastX * AIM_RADIUS_CSS
+    const cssY = rect.height / 2 + lastY * AIM_RADIUS_CSS
+    state.mouseX = (cssX / rect.width) * canvas.width
+    state.mouseY = (cssY / rect.height) * canvas.height
+  }
+
+  writeAim(lastX, lastY)
+
+  const onDown = (e: PointerEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    pointerId = e.pointerId
+    el.setPointerCapture(e.pointerId)
+    const v = stickVector(el, e.clientX, e.clientY)
+    setKnob(el, v.knobX, v.knobY)
+    writeAim(v.x, v.y)
+  }
+  const onMove = (e: PointerEvent) => {
+    if (pointerId !== e.pointerId) return
+    e.preventDefault()
+    const v = stickVector(el, e.clientX, e.clientY)
+    setKnob(el, v.knobX, v.knobY)
+    writeAim(v.x, v.y)
+  }
+  const onUp = (e: PointerEvent) => {
+    if (pointerId !== e.pointerId) return
+    pointerId = null
+    setKnob(el, 0, 0)
+    writeAim(lastX, lastY)
   }
 
   el.addEventListener('pointerdown', onDown)
