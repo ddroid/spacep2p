@@ -77,38 +77,45 @@
 
         <div id="hud">
           <div class="hud-top">
-            <div class="hud-panel">
-              <div class="hud-label">ARENA</div>
-              <div id="room-code" class="hud-value mono">------</div>
+            <div class="hud-panel hud-arena">
+              <span class="hud-label heading">ARENA</span>
+              <span id="room-code" class="hud-value mono">------</span>
               <button id="btn-copy" class="btn-tiny" type="button" title="Copy room link">
                 COPY
               </button>
             </div>
-            <div class="hud-panel center">
-              <div class="hud-label">STATUS</div>
-              <div id="net-status" class="hud-value">CONNECTING…</div>
+            <div id="status-panel" class="hud-panel hud-status">
+              <div id="status-primary" class="status-primary heading">CONNECTING…</div>
+              <div id="status-secondary" class="status-secondary value" hidden></div>
             </div>
-            <div class="hud-panel right">
-              <div class="hud-label">PILOTS</div>
-              <div id="peer-count" class="hud-value">1</div>
+            <div class="hud-top-right">
+              <div class="hud-panel hud-pilots">
+                <span id="peer-count" class="hud-value">1 PILOT</span>
+              </div>
+              <button id="btn-leave" class="btn-leave" type="button">Leave</button>
             </div>
           </div>
 
           <div class="hud-bottom">
             <div class="vitals">
               <div class="bar-wrap">
-                <span>HULL</span>
+                <span class="control-label">HULL</span>
+                <span id="hp-value" class="bar-value value">100 / 100</span>
                 <div class="bar"><div id="hp-bar" class="bar-fill hp"></div></div>
               </div>
               <div class="bar-wrap">
-                <span>BOOST</span>
+                <span class="control-label">BOOST</span>
+                <span id="boost-value" class="bar-value value">100 / 100</span>
                 <div class="bar"><div id="boost-bar" class="bar-fill boost"></div></div>
               </div>
             </div>
             <div id="scoreboard" class="scoreboard"></div>
             <div class="controls-hint desktop-only">
-              <kbd>WASD</kbd> move · <kbd>Mouse</kbd> aim · <kbd>Click</kbd>/<kbd>Space</kbd>
-              fire · <kbd>Shift</kbd> boost · <kbd>Esc</kbd> leave
+              <span class="hint-item"><kbd>WASD</kbd><span class="control-label">Move</span></span>
+              <span class="hint-item"><kbd>Mouse</kbd><span class="control-label">Aim</span></span>
+              <span class="hint-item"><kbd>LMB</kbd><span class="control-label">Fire</span></span>
+              <span class="hint-item"><kbd>Shift</kbd><span class="control-label">Boost</span></span>
+              <span class="hint-item"><kbd>Esc</kbd><span class="control-label">Leave</span></span>
             </div>
           </div>
         </div>
@@ -153,8 +160,6 @@
             <p id="respawn-timer">Respawning in 3…</p>
           </div>
         </div>
-
-        <button id="btn-leave" class="btn-leave" type="button">Leave Arena</button>
       </section>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -1,11 +1,19 @@
 import './style.css'
 import { createInput } from './input'
-import { Game, type GameUI } from './game'
+import { ARENA_CAPACITY, Game, type GameUI } from './game'
 import {
   connectRoom,
   createRoomCode,
   type NetSession,
 } from './net'
+import {
+  formatArenaStatus,
+  formatPilotLabel,
+  formatScoreboard,
+  formatVitals,
+  type ArenaStatusView,
+  type ScoreboardView,
+} from './hudPresenters'
 
 const lobby = document.getElementById('lobby')!
 const gameScreen = document.getElementById('game')!
@@ -19,9 +27,13 @@ const btnLeave = document.getElementById('btn-leave') as HTMLButtonElement
 const btnCopy = document.getElementById('btn-copy') as HTMLButtonElement
 const roomCodeEl = document.getElementById('room-code')!
 const peerCountEl = document.getElementById('peer-count')!
-const netStatusEl = document.getElementById('net-status')!
+const statusPrimaryEl = document.getElementById('status-primary')!
+const statusSecondaryEl = document.getElementById('status-secondary')!
+const statusPanel = document.getElementById('status-panel')!
 const hpBar = document.getElementById('hp-bar')!
 const boostBar = document.getElementById('boost-bar')!
+const hpValueEl = document.getElementById('hp-value')!
+const boostValueEl = document.getElementById('boost-value')!
 const scoreboardEl = document.getElementById('scoreboard')!
 const killFeed = document.getElementById('kill-feed')!
 const toastEl = document.getElementById('toast')!
@@ -32,6 +44,9 @@ let session: NetSession | null = null
 let game: Game | null = null
 let inputCleanup: (() => void) | null = null
 let busy = false
+let lastHp = 100
+let lastMaxHp = 100
+let lastBoost = 1
 
 // Restore callsign
 const savedName = localStorage.getItem('nebula-callsign')
@@ -55,36 +70,85 @@ function getName(): string {
   return n
 }
 
+function applyArenaStatus(status: ArenaStatusView) {
+  statusPrimaryEl.textContent = status.primary
+  statusSecondaryEl.textContent = status.secondary
+  statusSecondaryEl.hidden = !status.secondary
+  statusPanel.classList.toggle('ok', status.ok)
+  statusPanel.classList.toggle('error', !status.ok && status.primary === 'LINK ERROR')
+}
+
+function applyVitals() {
+  const prevHull = Number.parseInt(hpValueEl.textContent.split('/')[0] ?? '100', 10)
+  const v = formatVitals({ hp: lastHp, maxHp: lastMaxHp, boost: lastBoost })
+  hpBar.style.width = `${v.hullPct}%`
+  boostBar.style.width = `${v.boostPct}%`
+  hpValueEl.textContent = v.hullText
+  boostValueEl.textContent = v.boostText
+  if (v.hullPct < prevHull) {
+    hpBar.classList.remove('flash')
+    void hpBar.offsetWidth
+    hpBar.classList.add('flash')
+    window.setTimeout(() => hpBar.classList.remove('flash'), 220)
+  }
+}
+
+function renderScoreboard(view: ScoreboardView) {
+  if (view.mode === 'waiting') {
+    scoreboardEl.className = 'scoreboard waiting'
+    scoreboardEl.innerHTML = `
+      <div class="sb-waiting-headline heading">${escapeHtml(view.headline)}</div>
+      <div class="sb-waiting-detail value">${escapeHtml(view.detail)}</div>
+    `
+    return
+  }
+
+  scoreboardEl.className = 'scoreboard'
+  scoreboardEl.innerHTML = `
+    <div class="sb-header">
+      <span class="sb-rank">${view.headers.rank}</span>
+      <span class="sb-dot-spacer"></span>
+      <span class="sb-name">${view.headers.pilot}</span>
+      <span class="sb-score">${view.headers.score}</span>
+    </div>
+    ${view.rows
+      .map(
+        (r) => `
+      <div class="sb-row${r.self ? ' self' : ''}">
+        <span class="sb-rank">${r.rank}</span>
+        <span class="sb-dot" style="background:${r.color}"></span>
+        <span class="sb-name player-name">${escapeHtml(r.name)}</span>
+        <span class="sb-score">${r.score}</span>
+      </div>`,
+      )
+      .join('')}
+  `
+}
+
 function buildUI(): GameUI {
   return {
     setRoomCode: (code) => {
       roomCodeEl.textContent = code
     },
     setPeerCount: (n) => {
-      peerCountEl.textContent = String(n)
+      peerCountEl.textContent = formatPilotLabel(n)
     },
-    setNetStatus: (text, ok) => {
-      netStatusEl.textContent = text
-      netStatusEl.classList.toggle('ok', !!ok)
+    setArenaStatus: (status) => {
+      applyArenaStatus(status)
     },
     setHp: (hp, max) => {
-      hpBar.style.width = `${Math.max(0, (hp / max) * 100)}%`
+      lastHp = hp
+      lastMaxHp = max
+      applyVitals()
     },
     setBoost: (boost) => {
-      boostBar.style.width = `${Math.max(0, boost * 100)}%`
+      lastBoost = boost
+      applyVitals()
     },
     setScoreboard: (rows) => {
-      scoreboardEl.innerHTML = rows
-        .map(
-          (r, i) =>
-            `<div class="sb-row${r.self ? ' self' : ''}">
-              <span class="sb-rank">${i + 1}</span>
-              <span class="sb-dot" style="background:${r.color}"></span>
-              <span class="sb-name">${escapeHtml(r.name)}</span>
-              <span class="sb-score">${r.score}</span>
-            </div>`,
-        )
-        .join('')
+      renderScoreboard(
+        formatScoreboard({ players: rows, capacity: ARENA_CAPACITY }),
+      )
     },
     pushKill: (text) => {
       const el = document.createElement('div')
@@ -147,7 +211,9 @@ async function enterArena(roomId: string) {
       onHit: (id, msg) => game?.onHit(id, msg),
       onKill: (id, msg) => game?.onKill(id, msg),
       onJoinError: (err) => {
-        ui.setNetStatus(`LINK ERROR: ${err}`)
+        applyArenaStatus(
+          formatArenaStatus({ phase: 'error', detail: err }),
+        )
         ui.toast(err)
       },
     })
@@ -237,8 +303,10 @@ btnCopy.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(url.toString())
     btnCopy.textContent = 'COPIED'
+    btnCopy.classList.add('copied')
     setTimeout(() => {
       btnCopy.textContent = 'COPY'
+      btnCopy.classList.remove('copied')
     }, 1500)
   } catch {
     // fallback

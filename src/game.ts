@@ -1,6 +1,10 @@
 import type { InputState } from './input'
 import type { NetSession } from './net'
 import { selfId } from './net'
+import {
+  formatArenaStatus,
+  type ArenaStatusView,
+} from './hudPresenters'
 import type {
   Bullet,
   FireMsg,
@@ -14,6 +18,8 @@ import type {
   StateMsg,
   Vec2,
 } from './types'
+
+export const ARENA_CAPACITY = 4
 
 export const WORLD = { w: 3200, h: 3200 }
 const SHIP_R = 16
@@ -47,7 +53,7 @@ const PILOT_COLORS = [
 export type GameUI = {
   setRoomCode: (code: string) => void
   setPeerCount: (n: number) => void
-  setNetStatus: (text: string, ok?: boolean) => void
+  setArenaStatus: (status: ArenaStatusView) => void
   setHp: (hp: number, max: number) => void
   setBoost: (boost: number) => void
   setScoreboard: (rows: { name: string; score: number; self: boolean; color: string }[]) => void
@@ -170,7 +176,7 @@ export class Game {
     this.resize()
 
     this.ui.setRoomCode(net.roomId)
-    this.ui.setNetStatus('SCANNING RELAYS…')
+    this.ui.setArenaStatus(formatArenaStatus({ phase: 'scanning' }))
     this.ui.setHp(this.me.hp, this.me.maxHp)
     this.ui.setBoost(this.boostFuel)
     this.refreshScoreboard()
@@ -181,7 +187,7 @@ export class Game {
     this.lastT = performance.now()
     // Introduce ourselves after a tick so actions are registered
     this.net.sendHello({ name: this.name, color: this.color, score: this.me.score })
-    this.ui.setNetStatus('IN ARENA · WAITING FOR PILOTS', true)
+    this.refreshArenaStatus()
     this.loop(this.lastT)
   }
 
@@ -201,7 +207,7 @@ export class Game {
     )
     this.sendStateNow()
     this.updatePeerCount()
-    this.ui.setNetStatus(`LINKED · ${this.net.getPeerIds().length + 1} PILOTS`, true)
+    this.refreshArenaStatus()
   }
 
   onPeerLeave(peerId: string) {
@@ -210,11 +216,7 @@ export class Game {
     this.ui.toast(`${r?.name ?? peerId.slice(0, 6)} left the arena`)
     this.updatePeerCount()
     this.refreshScoreboard()
-    const n = this.net.getPeerIds().length
-    this.ui.setNetStatus(
-      n === 0 ? 'IN ARENA · WAITING FOR PILOTS' : `LINKED · ${n + 1} PILOTS`,
-      true,
-    )
+    this.refreshArenaStatus()
   }
 
   onHello(peerId: string, msg: HelloMsg) {
@@ -356,6 +358,18 @@ export class Game {
 
   private updatePeerCount() {
     this.ui.setPeerCount(this.remotes.size + 1)
+  }
+
+  private refreshArenaStatus() {
+    const connected = this.remotes.size + 1
+    const phase = this.remotes.size === 0 ? 'waiting' : 'combat'
+    this.ui.setArenaStatus(
+      formatArenaStatus({
+        phase,
+        connected,
+        capacity: ARENA_CAPACITY,
+      }),
+    )
   }
 
   private refreshScoreboard() {
@@ -559,7 +573,7 @@ export class Game {
 
   private shoot() {
     const id = `${selfId}-${this.bulletSeq++}`
-    const nose = 20
+    const nose = 22
     const bx = this.me.x + Math.cos(this.me.angle) * nose
     const by = this.me.y + Math.sin(this.me.angle) * nose
     const vx = Math.cos(this.me.angle) * BULLET_SPEED + this.me.vx * 0.35
@@ -575,6 +589,19 @@ export class Game {
       color: this.me.color,
     }
     this.bullets.push(bullet)
+    // Muzzle flash
+    this.burst(bx, by, '#fff', 5, 0.45)
+    this.particles.push({
+      x: bx,
+      y: by,
+      vx: Math.cos(this.me.angle) * 40,
+      vy: Math.sin(this.me.angle) * 40,
+      life: 0.08,
+      maxLife: 0.08,
+      size: 5,
+      color: this.me.color,
+      glow: true,
+    })
     const msg: FireMsg = { id, x: bx, y: by, vx, vy, t: this.time }
     this.net.sendFire(msg)
   }
@@ -705,6 +732,7 @@ export class Game {
 
     this.drawStars(viewW, viewH)
     this.drawGrid()
+    if (this.me.alive) this.drawPlayerAura()
     this.drawBoundary()
 
     for (const p of this.particles) this.drawParticle(p)
@@ -716,25 +744,36 @@ export class Game {
 
     // Names
     for (const r of this.remotes.values()) {
-      if (r.alive) this.drawLabel(r)
+      if (r.alive) this.drawLabel(r, false)
     }
-    if (this.me.alive) this.drawLabel(this.me)
+    if (this.me.alive) this.drawLabel(this.me, true)
 
     ctx.restore()
 
-    // Vignette
-    const vig = ctx.createRadialGradient(
-      viewW / 2,
-      viewH / 2,
-      Math.min(viewW, viewH) * 0.35,
-      viewW / 2,
-      viewH / 2,
-      Math.max(viewW, viewH) * 0.7,
-    )
-    vig.addColorStop(0, 'rgba(0,0,0,0)')
-    vig.addColorStop(1, 'rgba(0,0,0,0.55)')
-    ctx.fillStyle = vig
-    ctx.fillRect(0, 0, viewW, viewH)
+    // Soft vignette around player screen position
+    if (this.me.alive) {
+      const px = this.me.x - this.cam.x
+      const py = this.me.y - this.cam.y
+      const playerGlow = ctx.createRadialGradient(px, py, 20, px, py, Math.min(viewW, viewH) * 0.42)
+      playerGlow.addColorStop(0, 'rgba(80, 70, 180, 0.07)')
+      playerGlow.addColorStop(0.55, 'rgba(0,0,0,0)')
+      playerGlow.addColorStop(1, 'rgba(0,0,0,0.5)')
+      ctx.fillStyle = playerGlow
+      ctx.fillRect(0, 0, viewW, viewH)
+    } else {
+      const vig = ctx.createRadialGradient(
+        viewW / 2,
+        viewH / 2,
+        Math.min(viewW, viewH) * 0.35,
+        viewW / 2,
+        viewH / 2,
+        Math.max(viewW, viewH) * 0.7,
+      )
+      vig.addColorStop(0, 'rgba(0,0,0,0)')
+      vig.addColorStop(1, 'rgba(0,0,0,0.55)')
+      ctx.fillStyle = vig
+      ctx.fillRect(0, 0, viewW, viewH)
+    }
 
     // Crosshair
     if (this.me.alive) {
@@ -756,6 +795,31 @@ export class Game {
     }
   }
 
+  private drawPlayerAura() {
+    const ctx = this.ctx
+    const x = this.me.x
+    const y = this.me.y
+
+    const glow = ctx.createRadialGradient(x, y, 8, x, y, 160)
+    glow.addColorStop(0, 'rgba(80, 70, 180, 0.12)')
+    glow.addColorStop(1, 'rgba(80, 70, 180, 0)')
+    ctx.fillStyle = glow
+    ctx.beginPath()
+    ctx.arc(x, y, 160, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Radar rings
+    for (const radius of [70, 130]) {
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, Math.PI * 2)
+      ctx.strokeStyle = `rgba(0, 240, 255, ${radius === 70 ? 0.12 : 0.07})`
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 10])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+  }
+
   private drawStars(viewW: number, viewH: number) {
     const ctx = this.ctx
     const left = this.cam.x - 40
@@ -766,10 +830,13 @@ export class Game {
     for (const s of this.stars) {
       if (s.x < left || s.y < top || s.x > right || s.y > bottom) continue
       const tw = 0.55 + 0.45 * Math.sin(this.time * 2 + s.twinkle)
-      ctx.globalAlpha = 0.35 + s.z * 0.55 * tw
+      // Slow parallax offset by depth
+      const ox = s.x + (this.cam.x - WORLD.w / 2) * (1 - s.z) * 0.015
+      const oy = s.y + (this.cam.y - WORLD.h / 2) * (1 - s.z) * 0.015
+      ctx.globalAlpha = 0.28 + s.z * 0.55 * tw
       ctx.fillStyle = '#c8d4ff'
       ctx.beginPath()
-      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2)
+      ctx.arc(ox, oy, s.size * s.z, 0, Math.PI * 2)
       ctx.fill()
     }
     ctx.globalAlpha = 1
@@ -782,19 +849,41 @@ export class Game {
     const y0 = Math.floor(this.cam.y / step) * step
     const viewW = this.canvas.width / this.dpr
     const viewH = this.canvas.height / this.dpr
+    const px = this.me.x
+    const py = this.me.y
 
-    ctx.strokeStyle = 'rgba(80,100,180,0.08)'
-    ctx.lineWidth = 1
-    ctx.beginPath()
     for (let x = x0; x < this.cam.x + viewW + step; x += step) {
+      const dist = Math.abs(x - px)
+      const alpha = clamp(0.09 - dist / 4500, 0.02, 0.09)
+      ctx.strokeStyle = `rgba(70, 80, 130, ${alpha})`
+      ctx.lineWidth = 1
+      ctx.beginPath()
       ctx.moveTo(x, this.cam.y)
       ctx.lineTo(x, this.cam.y + viewH)
+      ctx.stroke()
     }
     for (let y = y0; y < this.cam.y + viewH + step; y += step) {
+      const dist = Math.abs(y - py)
+      const alpha = clamp(0.09 - dist / 4500, 0.02, 0.09)
+      ctx.strokeStyle = `rgba(70, 80, 130, ${alpha})`
+      ctx.lineWidth = 1
+      ctx.beginPath()
       ctx.moveTo(this.cam.x, y)
       ctx.lineTo(this.cam.x + viewW, y)
+      ctx.stroke()
     }
-    ctx.stroke()
+
+    // Sparse sector labels
+    ctx.font = '500 10px "JetBrains Mono", monospace'
+    ctx.fillStyle = 'rgba(125, 140, 190, 0.28)'
+    ctx.textAlign = 'left'
+    for (let x = x0; x < this.cam.x + viewW + step; x += step * 4) {
+      for (let y = y0; y < this.cam.y + viewH + step; y += step * 4) {
+        const sx = Math.round(x / step)
+        const sy = Math.round(y / step)
+        ctx.fillText(`${sx}.${sy}`, x + 6, y + 14)
+      }
+    }
   }
 
   private drawBoundary() {
@@ -809,57 +898,100 @@ export class Game {
 
   private drawShip(p: PlayerState | RemotePlayer, isSelf: boolean) {
     const ctx = this.ctx
+    const scale = isSelf ? 1.2 : 1
+    const speed = len(p.vx, p.vy)
+
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate(p.angle)
+    ctx.scale(scale, scale)
 
-    // Glow
-    ctx.shadowColor = p.color
-    ctx.shadowBlur = p.boosting ? 28 : 16
+    // Directional movement trail
+    if (speed > 40) {
+      const trailLen = Math.min(28, 8 + speed * 0.04)
+      const grad = ctx.createLinearGradient(-6, 0, -6 - trailLen, 0)
+      grad.addColorStop(0, isSelf ? 'rgba(0,240,255,0.35)' : `${p.color}55`)
+      grad.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = grad
+      ctx.beginPath()
+      ctx.moveTo(-6, 0)
+      ctx.lineTo(-6 - trailLen, 5)
+      ctx.lineTo(-6 - trailLen, -5)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    // Engine glow behind ship
+    ctx.shadowColor = isSelf ? '#00f0ff' : p.color
+    ctx.shadowBlur = p.boosting ? 32 : isSelf ? 22 : 14
 
     // Hull
     ctx.beginPath()
-    ctx.moveTo(18, 0)
-    ctx.lineTo(-12, 12)
-    ctx.lineTo(-6, 0)
-    ctx.lineTo(-12, -12)
+    ctx.moveTo(20, 0)
+    ctx.lineTo(-13, 13)
+    ctx.lineTo(-7, 0)
+    ctx.lineTo(-13, -13)
     ctx.closePath()
     ctx.fillStyle = p.color
-    ctx.globalAlpha = 0.9
+    ctx.globalAlpha = 0.95
     ctx.fill()
     ctx.globalAlpha = 1
-    ctx.strokeStyle = '#fff'
-    ctx.lineWidth = 1.5
+
+    // Thin cyan/white inner highlight for local player
+    ctx.strokeStyle = isSelf ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)'
+    ctx.lineWidth = isSelf ? 2 : 1.4
     ctx.stroke()
+    if (isSelf) {
+      ctx.beginPath()
+      ctx.moveTo(14, 0)
+      ctx.lineTo(-8, 7)
+      ctx.lineTo(-4, 0)
+      ctx.lineTo(-8, -7)
+      ctx.closePath()
+      ctx.strokeStyle = 'rgba(0,240,255,0.55)'
+      ctx.lineWidth = 1
+      ctx.stroke()
+    }
 
     // Cockpit
     ctx.beginPath()
-    ctx.arc(4, 0, 3.5, 0, Math.PI * 2)
+    ctx.arc(5, 0, isSelf ? 4 : 3.2, 0, Math.PI * 2)
     ctx.fillStyle = isSelf ? '#fff' : 'rgba(255,255,255,0.75)'
-    ctx.shadowBlur = 8
+    ctx.shadowBlur = isSelf ? 12 : 8
     ctx.fill()
 
     // Thrust flame
     if (p.thrusting) {
-      const flick = 8 + Math.random() * 10 * (p.boosting ? 1.6 : 1)
+      const flick = 10 + Math.random() * 12 * (p.boosting ? 1.6 : 1)
       ctx.beginPath()
-      ctx.moveTo(-6, 0)
-      ctx.lineTo(-6 - flick, 5)
-      ctx.lineTo(-10, 0)
-      ctx.lineTo(-6 - flick, -5)
+      ctx.moveTo(-7, 0)
+      ctx.lineTo(-7 - flick, 6)
+      ctx.lineTo(-12, 0)
+      ctx.lineTo(-7 - flick, -6)
       ctx.closePath()
       ctx.fillStyle = p.boosting ? '#ff9f1c' : '#fff'
       ctx.shadowColor = p.boosting ? '#ff9f1c' : p.color
-      ctx.shadowBlur = 14
+      ctx.shadowBlur = 16
       ctx.fill()
     }
 
     ctx.restore()
 
+    // Local-player indicator
+    if (isSelf) {
+      ctx.beginPath()
+      ctx.moveTo(p.x, p.y + SHIP_R + 14)
+      ctx.lineTo(p.x - 5, p.y + SHIP_R + 8)
+      ctx.lineTo(p.x + 5, p.y + SHIP_R + 8)
+      ctx.closePath()
+      ctx.fillStyle = 'rgba(0,240,255,0.85)'
+      ctx.fill()
+    }
+
     // HP ring
     if (p.hp < p.maxHp) {
       ctx.beginPath()
-      ctx.arc(p.x, p.y, SHIP_R + 8, -Math.PI / 2, -Math.PI / 2 + (p.hp / p.maxHp) * Math.PI * 2)
+      ctx.arc(p.x, p.y, SHIP_R + 10, -Math.PI / 2, -Math.PI / 2 + (p.hp / p.maxHp) * Math.PI * 2)
       ctx.strokeStyle = p.color
       ctx.lineWidth = 2
       ctx.shadowBlur = 0
@@ -869,35 +1001,50 @@ export class Game {
     }
   }
 
-  private drawLabel(p: PlayerState | RemotePlayer) {
+  private drawLabel(p: PlayerState | RemotePlayer, isSelf: boolean) {
     const ctx = this.ctx
-    ctx.font = '600 11px "JetBrains Mono", monospace'
+    const y = p.y - (isSelf ? 36 : 28)
+    ctx.font = `600 ${isSelf ? 12 : 11}px "JetBrains Mono", monospace`
     ctx.textAlign = 'center'
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'
-    const label = p.name
-    ctx.fillText(label, p.x + 1, p.y - 28 + 1)
+    ctx.shadowColor = 'rgba(0,0,0,0.85)'
+    ctx.shadowBlur = 4
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'
+    ctx.fillText(p.name, p.x + 1, y + 1)
     ctx.fillStyle = p.color
-    ctx.fillText(label, p.x, p.y - 28)
+    ctx.fillText(p.name, p.x, y)
+    ctx.shadowBlur = 0
   }
 
   private drawBullet(b: Bullet) {
     const ctx = this.ctx
-    ctx.save()
-    ctx.shadowColor = b.color
-    ctx.shadowBlur = 10
-    ctx.strokeStyle = b.color
-    ctx.lineWidth = 2.5
-    ctx.lineCap = 'round'
     const sp = len(b.vx, b.vy) || 1
-    const tx = (b.vx / sp) * 10
-    const ty = (b.vy / sp) * 10
+    const tx = (b.vx / sp) * 7
+    const ty = (b.vy / sp) * 7
+
+    ctx.save()
+    // Trail with opacity falloff
+    const grad = ctx.createLinearGradient(b.x - tx * 1.6, b.y - ty * 1.6, b.x, b.y)
+    grad.addColorStop(0, 'rgba(0,0,0,0)')
+    grad.addColorStop(0.45, `${b.color}55`)
+    grad.addColorStop(1, b.color)
+    ctx.strokeStyle = grad
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
     ctx.beginPath()
-    ctx.moveTo(b.x - tx, b.y - ty)
-    ctx.lineTo(b.x + tx * 0.3, b.y + ty * 0.3)
+    ctx.moveTo(b.x - tx * 1.6, b.y - ty * 1.6)
+    ctx.lineTo(b.x, b.y)
     ctx.stroke()
+
+    // Bright white core + weapon-color glow
+    ctx.shadowColor = b.color
+    ctx.shadowBlur = 14
     ctx.fillStyle = '#fff'
     ctx.beginPath()
-    ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2)
+    ctx.arc(b.x, b.y, 2.4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.shadowBlur = 7
+    ctx.beginPath()
+    ctx.arc(b.x, b.y, 1.2, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
   }
