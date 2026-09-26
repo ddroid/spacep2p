@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatArenaStatus,
+  formatMatchClock,
   formatPilotLabel,
   formatScoreboard,
   formatVitals,
@@ -36,6 +37,37 @@ describe('formatArenaStatus', () => {
     })
   })
 
+  it('shows the clock and kill target once the fight is on', () => {
+    expect(
+      formatArenaStatus({
+        phase: 'combat',
+        connected: 2,
+        capacity: 4,
+        timeLeft: 154,
+        killLimit: 5,
+      }),
+    ).toEqual({
+      primary: 'COMBAT ACTIVE',
+      secondary: '2 / 4 connected · 2:34 · first to 5',
+      ok: true,
+    })
+  })
+
+  it('names the match winner when the fight is over', () => {
+    expect(
+      formatArenaStatus({
+        phase: 'ended',
+        connected: 2,
+        capacity: 4,
+        detail: 'Nyx takes the arena',
+      }),
+    ).toEqual({
+      primary: 'MATCH OVER',
+      secondary: 'Nyx takes the arena',
+      ok: true,
+    })
+  })
+
   it('shows scanning relays while connecting', () => {
     expect(formatArenaStatus({ phase: 'scanning' })).toEqual({
       primary: 'SCANNING RELAYS',
@@ -55,6 +87,13 @@ describe('formatArenaStatus', () => {
       secondary: 'could not connect to peer',
       ok: false,
     })
+  })
+})
+
+describe('formatMatchClock', () => {
+  it('pads seconds', () => {
+    expect(formatMatchClock(154)).toBe('2:34')
+    expect(formatMatchClock(3)).toBe('0:03')
   })
 })
 

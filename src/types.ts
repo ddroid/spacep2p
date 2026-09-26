@@ -56,6 +56,8 @@ export type HelloMsg = {
   name: string
   color: string
   score: number
+  /** Seconds this pilot has been in the room. */
+  age: number
 }
 
 export type StateMsg = {
@@ -71,6 +73,8 @@ export type StateMsg = {
   boosting: boolean
   seq: number
   t: number
+  /** Seconds this pilot has been in the room. */
+  age: number
 }
 
 export type FireMsg = {
@@ -95,17 +99,28 @@ export type KillMsg = {
   victimId: string
   killerName: string
   victimName: string
+  bulletId: string
+}
+
+export type FullMsg = {
+  capacity: number
+}
+
+export type OverMsg = {
+  winnerId: string
+  winnerName: string
+  reason: 'kills' | 'time'
+  tied: boolean
 }
 
 export type RemotePlayer = PlayerState & {
-  /** For interpolation */
-  fromX: number
-  fromY: number
-  fromAngle: number
-  toX: number
-  toY: number
-  toAngle: number
-  fromT: number
-  toT: number
+  samples: {
+    t: number
+    x: number
+    y: number
+    angle: number
+    vx: number
+    vy: number
+  }[]
   lastSeen: number
 }

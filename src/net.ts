@@ -1,9 +1,11 @@
 import { joinRoom, selfId, type Room } from 'trystero'
 import type {
   FireMsg,
+  FullMsg,
   HelloMsg,
   HitMsg,
   KillMsg,
+  OverMsg,
   StateMsg,
 } from './types'
 
@@ -18,6 +20,8 @@ export type NetHandlers = {
   onFire: (peerId: string, msg: FireMsg) => void
   onHit: (peerId: string, msg: HitMsg) => void
   onKill: (peerId: string, msg: KillMsg) => void
+  onFull: (peerId: string, msg: FullMsg) => void
+  onOver: (peerId: string, msg: OverMsg) => void
   onJoinError: (error: string) => void
 }
 
@@ -30,6 +34,8 @@ export type NetSession = {
   sendFire: (msg: FireMsg) => void
   sendHit: (msg: HitMsg) => void
   sendKill: (msg: KillMsg) => void
+  sendFull: (target: string, capacity: number) => void
+  sendOver: (msg: OverMsg) => void
   getPeerIds: () => string[]
   ping: (peerId: string) => Promise<number>
 }
@@ -87,6 +93,8 @@ export function connectRoom(
   const fire = room.makeAction<FireMsg>('fire')
   const hit = room.makeAction<HitMsg>('hit')
   const kill = room.makeAction<KillMsg>('kill')
+  const full = room.makeAction<FullMsg>('full')
+  const over = room.makeAction<OverMsg>('over')
 
   room.onPeerJoin = (peerId) => handlers.onPeerJoin(peerId)
   room.onPeerLeave = (peerId) => handlers.onPeerLeave(peerId)
@@ -96,6 +104,8 @@ export function connectRoom(
   fire.onMessage = (msg, { peerId }) => handlers.onFire(peerId, msg)
   hit.onMessage = (msg, { peerId }) => handlers.onHit(peerId, msg)
   kill.onMessage = (msg, { peerId }) => handlers.onKill(peerId, msg)
+  full.onMessage = (msg, { peerId }) => handlers.onFull(peerId, msg)
+  over.onMessage = (msg, { peerId }) => handlers.onOver(peerId, msg)
 
   return {
     room,
@@ -115,6 +125,12 @@ export function connectRoom(
     },
     sendKill: (msg) => {
       void kill.send(msg)
+    },
+    sendFull: (target, capacity) => {
+      void full.send({ capacity }, { target })
+    },
+    sendOver: (msg) => {
+      void over.send(msg)
     },
     getPeerIds: () => Object.keys(room.getPeers()),
     ping: (peerId) => room.ping(peerId),

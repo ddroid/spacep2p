@@ -1,10 +1,13 @@
-export type ArenaStatusPhase = 'scanning' | 'waiting' | 'combat' | 'error'
+export type ArenaStatusPhase = 'scanning' | 'waiting' | 'combat' | 'ended' | 'error'
 
 export type ArenaStatusInput = {
   phase: ArenaStatusPhase
   connected?: number
   capacity?: number
   detail?: string
+  /** Seconds remaining once the fight clock is running. */
+  timeLeft?: number
+  killLimit?: number
 }
 
 export type ArenaStatusView = {
@@ -42,17 +45,29 @@ export function formatArenaStatus(input: ArenaStatusInput): ArenaStatusView {
   const connected = input.connected ?? 0
 
   if (input.phase === 'waiting') {
+    const rule = input.killLimit ? ` · first to ${input.killLimit}` : ''
     return {
       primary: 'WAITING FOR PILOTS',
-      secondary: `${connected} / ${capacity} connected`,
+      secondary: `${connected} / ${capacity} connected${rule}`,
       ok: true,
     }
   }
 
   if (input.phase === 'combat') {
+    const clock =
+      input.timeLeft != null ? ` · ${formatMatchClock(input.timeLeft)}` : ''
+    const rule = input.killLimit ? ` · first to ${input.killLimit}` : ''
     return {
       primary: 'COMBAT ACTIVE',
-      secondary: `${connected} / ${capacity} connected`,
+      secondary: `${connected} / ${capacity} connected${clock}${rule}`,
+      ok: true,
+    }
+  }
+
+  if (input.phase === 'ended') {
+    return {
+      primary: 'MATCH OVER',
+      secondary: input.detail ?? '',
       ok: true,
     }
   }
@@ -78,6 +93,13 @@ export function formatArenaStatus(input: ArenaStatusInput): ArenaStatusView {
     secondary: '',
     ok: false,
   }
+}
+
+export function formatMatchClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}:${r.toString().padStart(2, '0')}`
 }
 
 export function formatPilotLabel(count: number): string {

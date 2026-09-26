@@ -1,6 +1,6 @@
 import './style.css'
 import { createInput } from './input'
-import { ARENA_CAPACITY, Game, type GameUI } from './game'
+import { ARENA_CAPACITY, Game, type EdgeHint, type GameUI } from './game'
 import {
   connectRoom,
   createRoomCode,
@@ -39,6 +39,10 @@ const killFeed = document.getElementById('kill-feed')!
 const toastEl = document.getElementById('toast')!
 const respawnOverlay = document.getElementById('respawn-overlay')!
 const respawnTimer = document.getElementById('respawn-timer')!
+const edgeHintsEl = document.getElementById('edge-hints')!
+const matchOverlay = document.getElementById('match-overlay')!
+const matchTitle = document.getElementById('match-title')!
+const matchDetail = document.getElementById('match-detail')!
 
 let session: NetSession | null = null
 let game: Game | null = null
@@ -125,6 +129,34 @@ function renderScoreboard(view: ScoreboardView) {
   `
 }
 
+function renderEdgeHints(hints: EdgeHint[]) {
+  if (!edgeHintsEl) return
+  const keep = new Set(hints.map((h) => h.id))
+  for (const child of [...edgeHintsEl.children]) {
+    const id = (child as HTMLElement).dataset.id
+    if (!id || !keep.has(id)) child.remove()
+  }
+  for (const hint of hints) {
+    let el = edgeHintsEl.querySelector<HTMLElement>(`[data-id="${CSS.escape(hint.id)}"]`)
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'edge-hint'
+      el.dataset.id = hint.id
+      const crown = document.createElement('span')
+      crown.className = 'edge-crown'
+      const arrow = document.createElement('span')
+      arrow.className = 'edge-arrow'
+      el.append(crown, arrow)
+      edgeHintsEl.append(el)
+    }
+    el.classList.toggle('leader', hint.leader)
+    el.style.color = hint.color
+    el.style.transform = `translate3d(${hint.x}px, ${hint.y}px, 0)`
+    const arrow = el.querySelector<HTMLElement>('.edge-arrow')
+    if (arrow) arrow.style.transform = `rotate(${hint.angle}rad)`
+  }
+}
+
 function buildUI(): GameUI {
   return {
     setRoomCode: (code) => {
@@ -173,6 +205,20 @@ function buildUI(): GameUI {
       respawnOverlay.hidden = !show
       if (text) respawnTimer.textContent = text
     },
+    setEdgeHints: (hints) => {
+      renderEdgeHints(hints)
+    },
+    setMatchResult: (show, title, detail) => {
+      if (!matchOverlay) return
+      matchOverlay.hidden = !show
+      if (title && matchTitle) matchTitle.textContent = title
+      if (detail && matchDetail) matchDetail.textContent = detail
+    },
+    onArenaFull: () => {
+      void leaveArena(true).then(() => {
+        setLobbyStatus('This arena already has 4 pilots.', true)
+      })
+    },
   }
 }
 
@@ -210,6 +256,8 @@ async function enterArena(roomId: string) {
       onFire: (id, msg) => game?.onFire(id, msg),
       onHit: (id, msg) => game?.onHit(id, msg),
       onKill: (id, msg) => game?.onKill(id, msg),
+      onFull: (id) => game?.onFull(id),
+      onOver: (id, msg) => game?.onOver(id, msg),
       onJoinError: (err) => {
         applyArenaStatus(
           formatArenaStatus({ phase: 'error', detail: err }),

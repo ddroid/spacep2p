@@ -67,7 +67,9 @@
             <li>WebRTC data channels · end-to-end encrypted</li>
             <li>Matchmaking over Nostr relays (no game server)</li>
             <li>Share a room code · open a second tab to test</li>
+            <li>First to 5 kills, or 3 minutes</li>
           </ul>
+          <p class="lobby-controls">WASD move · mouse aim · click fire · shift boost</p>
         </div>
       </section>
 
@@ -151,8 +153,16 @@
           </div>
         </div>
 
+        <div id="edge-hints"></div>
         <div id="kill-feed"></div>
         <div id="toast" hidden></div>
+
+        <div id="match-overlay" hidden>
+          <div class="respawn-card">
+            <h2 id="match-title">MATCH OVER</h2>
+            <p id="match-detail"></p>
+          </div>
+        </div>
 
         <div id="respawn-overlay" hidden>
           <div class="respawn-card">

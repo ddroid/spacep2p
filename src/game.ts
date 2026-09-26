@@ -5,12 +5,29 @@ import {
   formatArenaStatus,
   type ArenaStatusView,
 } from './hudPresenters'
+import {
+  HIT_SLACK,
+  INTERP_DELAY,
+  KILL_LIMIT,
+  MATCH_SECONDS,
+  arenaPhase,
+  edgeAnchor,
+  judgeHit,
+  leaderIds,
+  nearbyPoint,
+  pickTimeWinner,
+  placeMarker,
+  poseAt,
+  safeColor,
+  shouldAnchorToPeer,
+} from './rules'
 import type {
   Bullet,
   FireMsg,
   HelloMsg,
   HitMsg,
   KillMsg,
+  OverMsg,
   Particle,
   PlayerState,
   RemotePlayer,
@@ -38,6 +55,8 @@ const RESPAWN_TIME = 2.8
 const STATE_HZ = 20
 const HIT_DAMAGE = 22
 const SHIP_HIT_R = 18
+const DRONE_HP = 44
+const DRONE_R = 18
 
 const PILOT_COLORS = [
   '#00f0ff',
@@ -50,6 +69,15 @@ const PILOT_COLORS = [
   '#facc15',
 ]
 
+export type EdgeHint = {
+  id: string
+  x: number
+  y: number
+  angle: number
+  color: string
+  leader: boolean
+}
+
 export type GameUI = {
   setRoomCode: (code: string) => void
   setPeerCount: (n: number) => void
@@ -60,6 +88,9 @@ export type GameUI = {
   pushKill: (text: string) => void
   toast: (text: string) => void
   setRespawn: (show: boolean, text?: string) => void
+  setEdgeHints: (hints: EdgeHint[]) => void
+  setMatchResult: (show: boolean, title?: string, detail?: string) => void
+  onArenaFull: () => void
 }
 
 function clamp(v: number, lo: number, hi: number) {
@@ -134,6 +165,28 @@ export class Game {
   private dpr = 1
   private onResize: () => void
   private processedHits = new Set<string>()
+  private announced = new Set<string>()
+  private pendingHellos = new Map<string, HelloMsg>()
+  private ignored = new Set<string>()
+  private didAnchor = false
+  private hasThrust = false
+  private matchLeft = MATCH_SECONDS
+  private matchOver = false
+  private announcedEnd = false
+  private endDetail = ''
+  private lastClockSec = -1
+  private awarded = new Set<string>()
+  private seenKills = new Set<string>()
+  private claims = new Map<string, { bulletId: string; name: string; until: number }>()
+  private pendingHits: { from: string; msg: HitMsg; until: number }[] = []
+  private drone: {
+    x: number
+    y: number
+    angle: number
+    hp: number
+    alive: boolean
+    respawnIn: number
+  } | null = null
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -186,7 +239,12 @@ export class Game {
     this.running = true
     this.lastT = performance.now()
     // Introduce ourselves after a tick so actions are registered
-    this.net.sendHello({ name: this.name, color: this.color, score: this.me.score })
+    this.net.sendHello({
+      name: this.name,
+      color: this.color,
+      score: this.me.score,
+      age: this.time,
+    })
     this.refreshArenaStatus()
     this.loop(this.lastT)
   }
@@ -195,66 +253,94 @@ export class Game {
     this.running = false
     cancelAnimationFrame(this.raf)
     window.removeEventListener('resize', this.onResize)
+    this.ui.setEdgeHints([])
+    this.ui.setMatchResult(false)
   }
 
   /** Network handlers — called from main */
 
   onPeerJoin(peerId: string) {
-    this.ui.toast(`Pilot linked: ${peerId.slice(0, 6)}`)
+    if (this.ignored.has(peerId)) return
+    if (this.remotes.size + 1 >= ARENA_CAPACITY) {
+      this.ignored.add(peerId)
+      this.net.sendFull(peerId, ARENA_CAPACITY)
+      return
+    }
     this.net.sendHello(
-      { name: this.name, color: this.color, score: this.me.score },
+      { name: this.name, color: this.color, score: this.me.score, age: this.time },
       peerId,
     )
     this.sendStateNow()
-    this.updatePeerCount()
-    this.refreshArenaStatus()
   }
 
   onPeerLeave(peerId: string) {
+    this.ignored.delete(peerId)
+    this.pendingHellos.delete(peerId)
     const r = this.remotes.get(peerId)
+    if (!r) return
     this.remotes.delete(peerId)
-    this.ui.toast(`${r?.name ?? peerId.slice(0, 6)} left the arena`)
+    this.ui.toast(`${r.name} left the arena`)
     this.updatePeerCount()
     this.refreshScoreboard()
     this.refreshArenaStatus()
   }
 
   onHello(peerId: string, msg: HelloMsg) {
-    let r = this.remotes.get(peerId)
+    if (this.ignored.has(peerId)) return
+    const r = this.remotes.get(peerId)
     if (!r) {
-      const pos = spawnPos([{ x: this.me.x, y: this.me.y }])
-      r = this.makeRemote(peerId, pos.x, pos.y, msg)
-      this.remotes.set(peerId, r)
-    } else {
-      r.name = msg.name
-      r.color = msg.color
-      r.score = msg.score
+      this.pendingHellos.set(peerId, msg)
+      return
     }
+    r.name = msg.name
+    r.color = safeColor(msg.color, r.color)
+    r.score = msg.score
+    this.announce(peerId, r.name)
     this.updatePeerCount()
     this.refreshScoreboard()
   }
 
   onState(peerId: string, msg: StateMsg) {
+    if (this.ignored.has(peerId)) return
+    if (!Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return
+
+    let created = false
     let r = this.remotes.get(peerId)
     if (!r) {
-      r = this.makeRemote(peerId, msg.x, msg.y, {
-        name: peerId.slice(0, 6),
-        color: colorForId(peerId),
-        score: msg.score,
-      })
+      const hello = this.pendingHellos.get(peerId)
+      this.pendingHellos.delete(peerId)
+      r = this.makeRemote(
+        peerId,
+        msg.x,
+        msg.y,
+        hello ?? {
+          name: peerId.slice(0, 6),
+          color: colorForId(peerId),
+          score: msg.score,
+          age: msg.age,
+        },
+      )
       this.remotes.set(peerId, r)
+      this.announce(peerId, r.name)
+      this.updatePeerCount()
+      created = true
     }
 
     if (msg.seq < r.seq) return
 
-    r.fromX = r.x
-    r.fromY = r.y
-    r.fromAngle = r.angle
-    r.fromT = this.time
-    r.toX = msg.x
-    r.toY = msg.y
-    r.toAngle = msg.angle
-    r.toT = this.time + 1 / STATE_HZ
+    const prev = r.samples[r.samples.length - 1]
+    if (prev && len(msg.x - prev.x, msg.y - prev.y) > 800) r.samples = []
+    r.samples.push({
+      t: this.time,
+      x: msg.x,
+      y: msg.y,
+      angle: msg.angle,
+      vx: msg.vx,
+      vy: msg.vy,
+    })
+    const cutoff = this.time - 1
+    while (r.samples.length > 2 && r.samples[0]!.t < cutoff) r.samples.shift()
+
     r.vx = msg.vx
     r.vy = msg.vy
     r.hp = msg.hp
@@ -265,10 +351,24 @@ export class Game {
     r.seq = msg.seq
     r.t = msg.t
     r.lastSeen = this.time
+
+    this.tryAnchor(peerId, msg.x, msg.y, msg.age)
+    const claim = this.claims.get(peerId)
+    if (claim && !msg.alive && this.time <= claim.until) {
+      this.awardPoint(claim.bulletId, r.name)
+      this.claims.delete(peerId)
+    } else if (claim && this.time > claim.until) {
+      this.claims.delete(peerId)
+    }
+    if (msg.score >= KILL_LIMIT) this.finishMatch(peerId, r.name, 'kills', false)
     this.refreshScoreboard()
+    if (created) this.refreshArenaStatus()
   }
 
   onFire(peerId: string, msg: FireMsg) {
+    if (this.ignored.has(peerId)) return
+    if (!Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return
+    if (this.bullets.some((b) => b.id === msg.id)) return
     const r = this.remotes.get(peerId)
     const color = r?.color ?? colorForId(peerId)
     this.bullets.push({
@@ -283,40 +383,32 @@ export class Game {
     })
   }
 
-  onHit(_peerId: string, msg: HitMsg) {
-    // Only apply damage to ourselves when someone claims a hit on us
+  onHit(peerId: string, msg: HitMsg) {
+    if (this.ignored.has(peerId)) return
     if (msg.targetId !== selfId) return
-    if (!this.me.alive) return
-    const key = `${msg.bulletId}:${msg.targetId}`
-    if (this.processedHits.has(key)) return
-    this.processedHits.add(key)
-    if (this.processedHits.size > 200) {
-      const first = this.processedHits.values().next().value
-      if (first) this.processedHits.delete(first)
-    }
-
-    this.me.hp = Math.max(0, this.me.hp - msg.damage)
-    this.ui.setHp(this.me.hp, this.me.maxHp)
-    this.burst(msg.x, msg.y, this.me.color, 10, 1.2)
-    // Remove the bullet locally
-    this.bullets = this.bullets.filter((b) => b.id !== msg.bulletId)
-
-    if (this.me.hp <= 0) {
-      this.die(_peerId)
-    }
+    if (!this.me.alive || this.matchOver) return
+    this.considerHit(peerId, msg)
   }
 
-  onKill(_peerId: string, msg: KillMsg) {
-    this.ui.pushKill(
-      `${msg.killerName}  destroyed  ${msg.victimName}`,
-    )
-    if (msg.killerId === selfId) {
-      // Already counted locally when we detected the kill
-    } else if (msg.killerId !== selfId) {
-      const killer = this.remotes.get(msg.killerId)
-      if (killer) killer.score = Math.max(killer.score, killer.score)
-    }
-    this.refreshScoreboard()
+  onKill(peerId: string, msg: KillMsg) {
+    if (this.ignored.has(peerId)) return
+    this.noteKill(msg)
+    if (msg.killerId === selfId) this.awardPoint(msg.bulletId, msg.victimName)
+  }
+
+  onFull(_peerId: string) {
+    this.ui.onArenaFull()
+  }
+
+  private announce(peerId: string, name: string) {
+    if (this.announced.has(peerId)) return
+    this.announced.add(peerId)
+    this.ui.toast(`${name} linked`)
+  }
+
+  onOver(_peerId: string, msg: OverMsg) {
+    this.announcedEnd = true
+    this.finishMatch(msg.winnerId, msg.winnerName, msg.reason, msg.tied)
   }
 
   // —— internals ——
@@ -344,14 +436,16 @@ export class Game {
       boosting: false,
       seq: 0,
       t: 0,
-      fromX: x,
-      fromY: y,
-      fromAngle: -Math.PI / 2,
-      toX: x,
-      toY: y,
-      toAngle: -Math.PI / 2,
-      fromT: 0,
-      toT: 0,
+      samples: [
+        {
+          t: this.time,
+          x,
+          y,
+          angle: -Math.PI / 2,
+          vx: 0,
+          vy: 0,
+        },
+      ],
       lastSeen: this.time,
     }
   }
@@ -362,12 +456,16 @@ export class Game {
 
   private refreshArenaStatus() {
     const connected = this.remotes.size + 1
-    const phase = this.remotes.size === 0 ? 'waiting' : 'combat'
+    const phase = arenaPhase(this.remotes.size, this.matchOver)
+    const timeLeft = phase === 'combat' ? Math.ceil(this.matchLeft) : undefined
     this.ui.setArenaStatus(
       formatArenaStatus({
         phase,
         connected,
         capacity: ARENA_CAPACITY,
+        timeLeft,
+        killLimit: KILL_LIMIT,
+        detail: this.endDetail,
       }),
     )
   }
@@ -412,36 +510,41 @@ export class Game {
   }
 
   private update(dt: number) {
-    // Interpolate remotes
+    const renderT = this.time - INTERP_DELAY
     for (const r of this.remotes.values()) {
-      if (r.toT > r.fromT) {
-        const a = clamp((this.time - r.fromT) / (r.toT - r.fromT), 0, 1)
-        const s = a * a * (3 - 2 * a)
-        r.x = r.fromX + (r.toX - r.fromX) * s
-        r.y = r.fromY + (r.toY - r.fromY) * s
-        // Angle lerp shortest path
-        let da = r.toAngle - r.fromAngle
-        while (da > Math.PI) da -= Math.PI * 2
-        while (da < -Math.PI) da += Math.PI * 2
-        r.angle = r.fromAngle + da * s
-      } else {
-        // Extrapolate slightly
-        r.x += r.vx * dt * 0.3
-        r.y += r.vy * dt * 0.3
-      }
+      const pose = poseAt(r.samples, renderT)
+      if (!pose) continue
+      r.x = pose.x
+      r.y = pose.y
+      r.angle = pose.angle
     }
 
+    if (!this.matchOver && this.remotes.size > 0) {
+      this.matchLeft = Math.max(0, this.matchLeft - dt)
+      const sec = Math.ceil(this.matchLeft)
+      if (sec !== this.lastClockSec) {
+        this.lastClockSec = sec
+        this.refreshArenaStatus()
+      }
+      if (this.matchLeft <= 0) this.finishByTime()
+    }
+
+    this.flushPendingHits()
+    this.updateDrone(dt)
+
     // Respawn
-    if (!this.me.alive) {
+    if (!this.me.alive && !this.matchOver) {
       this.respawnIn -= dt
       this.ui.setRespawn(
         true,
         `Respawning in ${Math.max(0, this.respawnIn).toFixed(1)}…`,
       )
       if (this.respawnIn <= 0) this.respawn()
-    } else {
+    } else if (this.me.alive) {
       this.ui.setRespawn(false)
       this.updateLocal(dt)
+    } else {
+      this.ui.setRespawn(false)
     }
 
     // Bullets
@@ -459,16 +562,23 @@ export class Game {
         b.y < WORLD.h + 50,
     )
 
-    // Local hit detection: our bullets vs remotes
-    if (this.me.alive) {
+    if (this.me.alive && !this.matchOver) {
       for (const b of [...this.bullets]) {
-        if (b.ownerId !== selfId) continue
-        for (const r of this.remotes.values()) {
-          if (!r.alive) continue
-          if (len(b.x - r.x, b.y - r.y) < SHIP_HIT_R) {
-            this.claimHit(r, b)
-            break
+        if (b.ownerId === selfId) {
+          let spent = false
+          for (const r of this.remotes.values()) {
+            if (!r.alive) continue
+            if (len(b.x - r.x, b.y - r.y) < SHIP_HIT_R) {
+              this.claimHit(r, b)
+              spent = true
+              break
+            }
           }
+          if (!spent && this.drone?.alive && len(b.x - this.drone.x, b.y - this.drone.y) < DRONE_R) {
+            this.hitDrone(b)
+          }
+        } else if (len(b.x - this.me.x, b.y - this.me.y) < SHIP_HIT_R) {
+          this.applyDamage(b.ownerId, b.id, b.x, b.y)
         }
       }
     }
@@ -499,12 +609,14 @@ export class Game {
     this.cam.y += (targetY - this.cam.y) * Math.min(1, 8 * dt)
     this.cam.x = clamp(this.cam.x, 0, Math.max(0, WORLD.w - viewW))
     this.cam.y = clamp(this.cam.y, 0, Math.max(0, WORLD.h - viewH))
+    this.publishEdgeHints(viewW, viewH)
   }
 
   private updateLocal(dt: number) {
     const ax = (this.input.right ? 1 : 0) - (this.input.left ? 1 : 0)
     const ay = (this.input.down ? 1 : 0) - (this.input.up ? 1 : 0)
     const thrusting = ax !== 0 || ay !== 0
+    if (thrusting) this.hasThrust = true
     const wantBoost = this.input.boost && thrusting && this.boostFuel > 0.05
 
     if (wantBoost) {
@@ -565,7 +677,7 @@ export class Game {
 
     // Fire
     this.fireCd = Math.max(0, this.fireCd - dt)
-    if (this.input.fire && this.fireCd <= 0) {
+    if (this.input.fire && this.fireCd <= 0 && !this.matchOver) {
       this.fireCd = FIRE_COOLDOWN
       this.shoot()
     }
@@ -609,7 +721,11 @@ export class Game {
   private claimHit(target: RemotePlayer, bullet: Bullet) {
     this.bullets = this.bullets.filter((b) => b.id !== bullet.id)
     this.burst(bullet.x, bullet.y, target.color, 12, 1.4)
-
+    this.claims.set(target.id, {
+      bulletId: bullet.id,
+      name: target.name,
+      until: this.time + 1.2,
+    })
     const msg: HitMsg = {
       targetId: target.id,
       bulletId: bullet.id,
@@ -618,27 +734,9 @@ export class Game {
       y: bullet.y,
     }
     this.net.sendHit(msg)
-
-    // Optimistic damage on remote display
-    target.hp = Math.max(0, target.hp - HIT_DAMAGE)
-    if (target.hp <= 0 && target.alive) {
-      target.alive = false
-      this.me.score += 1
-      this.ui.setHp(this.me.hp, this.me.maxHp)
-      this.refreshScoreboard()
-      this.burst(target.x, target.y, target.color, 40, 3)
-      const kill: KillMsg = {
-        killerId: selfId,
-        victimId: target.id,
-        killerName: this.me.name,
-        victimName: target.name,
-      }
-      this.net.sendKill(kill)
-      this.ui.pushKill(`${this.me.name}  destroyed  ${target.name}`)
-    }
   }
 
-  private die(killerId: string) {
+  private die(killerId: string, bulletId: string) {
     this.me.alive = false
     this.me.hp = 0
     this.me.vx = 0
@@ -646,14 +744,23 @@ export class Game {
     this.respawnIn = RESPAWN_TIME
     this.ui.setHp(0, this.me.maxHp)
     this.burst(this.me.x, this.me.y, this.me.color, 48, 3.5)
-    // Killer already broadcasts KillMsg on hit claim — avoid double feed
-    void killerId
+    const killer = this.remotes.get(killerId)
+    const msg: KillMsg = {
+      killerId,
+      victimId: selfId,
+      killerName: killer?.name ?? 'Pilot',
+      victimName: this.me.name,
+      bulletId,
+    }
+    this.noteKill(msg)
+    this.net.sendKill(msg)
     this.sendStateNow()
   }
 
   private respawn() {
     const avoid = [...this.remotes.values()].map((r) => ({ x: r.x, y: r.y }))
-    const pos = spawnPos(avoid)
+    const anchor = this.respawnAnchor()
+    const pos = anchor ? nearbyPoint(anchor, avoid, WORLD, Math.random) : spawnPos(avoid)
     this.me.x = pos.x
     this.me.y = pos.y
     this.me.vx = 0
@@ -683,8 +790,278 @@ export class Game {
       boosting: this.me.boosting,
       seq: this.seq,
       t: this.time,
+      age: this.time,
     }
     this.net.sendState(msg)
+  }
+
+  private tryAnchor(peerId: string, x: number, y: number, peerAge: number) {
+    if (
+      !shouldAnchorToPeer({
+        selfId,
+        peerId,
+        selfAge: this.time,
+        peerAge,
+        hasThrust: this.hasThrust,
+        didAnchor: this.didAnchor,
+      })
+    ) {
+      if (this.time > 2.5 || this.hasThrust) this.didAnchor = true
+      return
+    }
+    const pos = nearbyPoint({ x, y }, [{ x, y }], WORLD, Math.random)
+    this.me.x = pos.x
+    this.me.y = pos.y
+    this.me.vx = 0
+    this.me.vy = 0
+    const viewW = this.canvas.width / this.dpr
+    const viewH = this.canvas.height / this.dpr
+    this.cam.x = pos.x - viewW / 2
+    this.cam.y = pos.y - viewH / 2
+    this.didAnchor = true
+    this.sendStateNow()
+  }
+
+  private respawnAnchor(): Vec2 | null {
+    const living = [...this.remotes.values()].filter((r) => r.alive)
+    if (living.length === 0) return null
+    const leaders = this.currentLeaderIds()
+    const pool = living.filter((r) => leaders.has(r.id))
+    const pickFrom = pool.length > 0 ? pool : living
+    let best = pickFrom[0]!
+    let bestD = Infinity
+    for (const r of pickFrom) {
+      const d = len(r.x - this.me.x, r.y - this.me.y)
+      if (d < bestD) {
+        best = r
+        bestD = d
+      }
+    }
+    return { x: best.x, y: best.y }
+  }
+
+  private currentLeaderIds(): Set<string> {
+    return new Set(
+      leaderIds([
+        { id: selfId, score: this.me.score },
+        ...[...this.remotes.values()].map((r) => ({ id: r.id, score: r.score })),
+      ]),
+    )
+  }
+
+  private considerHit(peerId: string, msg: HitMsg) {
+    const key = `${msg.bulletId}:${selfId}`
+    if (this.processedHits.has(key)) return
+    const bullet = this.bullets.find((b) => b.id === msg.bulletId && b.ownerId === peerId)
+    const verdict = judgeHit({
+      px: this.me.x,
+      py: this.me.y,
+      claimX: msg.x,
+      claimY: msg.y,
+      bulletX: bullet?.x,
+      bulletY: bullet?.y,
+      radius: HIT_SLACK,
+    })
+    if (verdict === 'pending') {
+      if (!this.pendingHits.some((p) => p.msg.bulletId === msg.bulletId)) {
+        this.pendingHits.push({ from: peerId, msg, until: this.time + 0.2 })
+      }
+      return
+    }
+    if (verdict === 'reject') return
+    this.applyDamage(peerId, msg.bulletId, msg.x, msg.y)
+  }
+
+  private flushPendingHits() {
+    if (this.pendingHits.length === 0) return
+    this.pendingHits = this.pendingHits.filter((p) => {
+      if (this.time > p.until || this.matchOver || !this.me.alive) return false
+      const bullet = this.bullets.find((b) => b.id === p.msg.bulletId && b.ownerId === p.from)
+      const verdict = judgeHit({
+        px: this.me.x,
+        py: this.me.y,
+        claimX: p.msg.x,
+        claimY: p.msg.y,
+        bulletX: bullet?.x,
+        bulletY: bullet?.y,
+        radius: HIT_SLACK,
+      })
+      if (verdict === 'accept') {
+        this.applyDamage(p.from, p.msg.bulletId, p.msg.x, p.msg.y)
+        return false
+      }
+      if (verdict === 'reject') return false
+      return true
+    })
+  }
+
+  private applyDamage(attackerId: string, bulletId: string, x: number, y: number) {
+    if (!this.me.alive || this.matchOver) return
+    const key = `${bulletId}:${selfId}`
+    if (this.processedHits.has(key)) return
+    this.processedHits.add(key)
+    if (this.processedHits.size > 200) {
+      const first = this.processedHits.values().next().value
+      if (first) this.processedHits.delete(first)
+    }
+    this.me.hp = Math.max(0, this.me.hp - HIT_DAMAGE)
+    this.ui.setHp(this.me.hp, this.me.maxHp)
+    this.burst(x, y, this.me.color, 10, 1.2)
+    this.bullets = this.bullets.filter((b) => b.id !== bulletId)
+    if (this.me.hp <= 0) this.die(attackerId, bulletId)
+  }
+
+  private noteKill(msg: KillMsg) {
+    if (this.seenKills.has(msg.bulletId)) return
+    this.seenKills.add(msg.bulletId)
+    this.ui.pushKill(`${msg.killerName}  destroyed  ${msg.victimName}`)
+  }
+
+  private awardPoint(bulletId: string, victimName: string) {
+    if (this.matchOver || this.awarded.has(bulletId)) return
+    this.awarded.add(bulletId)
+    this.me.score += 1
+    this.refreshScoreboard()
+    if (!this.seenKills.has(bulletId)) {
+      this.seenKills.add(bulletId)
+      this.ui.pushKill(`${this.me.name}  destroyed  ${victimName}`)
+    }
+    if (this.me.score >= KILL_LIMIT) {
+      this.finishMatch(selfId, this.me.name, 'kills', false)
+    }
+  }
+
+  private finishByTime() {
+    const picked = pickTimeWinner([
+      { id: selfId, name: this.me.name, score: this.me.score },
+      ...[...this.remotes.values()].map((r) => ({
+        id: r.id,
+        name: r.name,
+        score: r.score,
+      })),
+    ])
+    this.finishMatch(picked.id, picked.name, 'time', picked.tied)
+  }
+
+  private finishMatch(
+    winnerId: string,
+    winnerName: string,
+    reason: 'kills' | 'time',
+    tied: boolean,
+  ) {
+    if (this.matchOver) return
+    this.matchOver = true
+    this.drone = null
+    const title = tied || !winnerName ? 'DRAW' : `${winnerName} takes the arena`
+    const detail = tied
+      ? 'Even score when time ran out'
+      : reason === 'kills'
+        ? `First to ${KILL_LIMIT}`
+        : 'Highest score when time ran out'
+    this.endDetail = tied ? 'Draw' : `${winnerName} takes the arena`
+    this.ui.setMatchResult(true, title, detail)
+    this.ui.setRespawn(false)
+    this.ui.setEdgeHints([])
+    this.refreshArenaStatus()
+    this.refreshScoreboard()
+    if (!this.announcedEnd) {
+      this.announcedEnd = true
+      this.net.sendOver({ winnerId, winnerName, reason, tied })
+    }
+  }
+
+  private updateDrone(dt: number) {
+    const solo = this.remotes.size === 0 && !this.matchOver && this.me.alive
+    if (!solo) {
+      this.drone = null
+      return
+    }
+    if (!this.drone) {
+      const pos = nearbyPoint(
+        { x: this.me.x, y: this.me.y },
+        [{ x: this.me.x, y: this.me.y }],
+        WORLD,
+        Math.random,
+      )
+      this.drone = { x: pos.x, y: pos.y, angle: 0, hp: DRONE_HP, alive: true, respawnIn: 0 }
+    }
+    const d = this.drone
+    if (!d.alive) {
+      d.respawnIn -= dt
+      if (d.respawnIn <= 0) {
+        const pos = nearbyPoint(
+          { x: this.me.x, y: this.me.y },
+          [{ x: this.me.x, y: this.me.y }],
+          WORLD,
+          Math.random,
+        )
+        d.x = pos.x
+        d.y = pos.y
+        d.hp = DRONE_HP
+        d.alive = true
+      }
+      return
+    }
+    d.angle += dt * 0.8
+    const tx = this.me.x + Math.cos(d.angle) * 280
+    const ty = this.me.y + Math.sin(d.angle) * 280
+    d.x += (tx - d.x) * Math.min(1, dt * 1.6)
+    d.y += (ty - d.y) * Math.min(1, dt * 1.6)
+    const away = len(d.x - this.me.x, d.y - this.me.y)
+    if (away < 180 && away > 0) {
+      d.x = this.me.x + ((d.x - this.me.x) / away) * 180
+      d.y = this.me.y + ((d.y - this.me.y) / away) * 180
+    }
+    d.x = clamp(d.x, 48, WORLD.w - 48)
+    d.y = clamp(d.y, 48, WORLD.h - 48)
+  }
+
+  private hitDrone(bullet: Bullet) {
+    const d = this.drone
+    if (!d?.alive) return
+    this.bullets = this.bullets.filter((b) => b.id !== bullet.id)
+    d.hp -= HIT_DAMAGE
+    this.burst(bullet.x, bullet.y, '#b8ff3c', 12, 1.2)
+    if (d.hp <= 0) {
+      d.alive = false
+      d.respawnIn = 1.4
+      this.burst(d.x, d.y, '#b8ff3c', 28, 2)
+    }
+  }
+
+  private publishEdgeHints(viewW: number, viewH: number) {
+    if (this.matchOver) {
+      this.ui.setEdgeHints([])
+      return
+    }
+    const narrow = viewW < 760
+    const bounds = {
+      left: 28,
+      top: narrow ? 188 : 84,
+      right: viewW - 28,
+      bottom: viewH - (narrow ? 200 : 112),
+    }
+    const origin = { x: this.me.x - this.cam.x, y: this.me.y - this.cam.y }
+    const leaders = this.currentLeaderIds()
+    const hints: EdgeHint[] = []
+    for (const r of this.remotes.values()) {
+      if (!r.alive) continue
+      const sx = r.x - this.cam.x
+      const sy = r.y - this.cam.y
+      const onScreen = sx >= -8 && sy >= -8 && sx <= viewW + 8 && sy <= viewH + 8
+      if (onScreen) continue
+      const edge = edgeAnchor(origin, { x: sx, y: sy }, bounds)
+      if (!edge) continue
+      hints.push({
+        id: r.id,
+        x: edge.x,
+        y: edge.y,
+        angle: edge.angle,
+        color: safeColor(r.color),
+        leader: leaders.has(r.id),
+      })
+    }
+    this.ui.setEdgeHints(hints)
   }
 
   private burst(x: number, y: number, color: string, n: number, power: number) {
@@ -737,16 +1114,17 @@ export class Game {
 
     for (const p of this.particles) this.drawParticle(p)
     for (const b of this.bullets) this.drawBullet(b)
+    if (this.drone?.alive) this.drawDrone()
     for (const r of this.remotes.values()) {
       if (r.alive) this.drawShip(r, false)
     }
     if (this.me.alive) this.drawShip(this.me, true)
 
-    // Names
+    const leaders = this.currentLeaderIds()
     for (const r of this.remotes.values()) {
-      if (r.alive) this.drawLabel(r, false)
+      if (r.alive) this.drawLabel(r, false, leaders.has(r.id))
     }
-    if (this.me.alive) this.drawLabel(this.me, true)
+    if (this.me.alive) this.drawLabel(this.me, true, leaders.has(selfId))
 
     ctx.restore()
 
@@ -977,21 +1355,10 @@ export class Game {
 
     ctx.restore()
 
-    // Local-player indicator
-    if (isSelf) {
-      ctx.beginPath()
-      ctx.moveTo(p.x, p.y + SHIP_R + 14)
-      ctx.lineTo(p.x - 5, p.y + SHIP_R + 8)
-      ctx.lineTo(p.x + 5, p.y + SHIP_R + 8)
-      ctx.closePath()
-      ctx.fillStyle = 'rgba(0,240,255,0.85)'
-      ctx.fill()
-    }
-
-    // HP ring
     if (p.hp < p.maxHp) {
+      const ring = (isSelf ? 36 : 30)
       ctx.beginPath()
-      ctx.arc(p.x, p.y, SHIP_R + 10, -Math.PI / 2, -Math.PI / 2 + (p.hp / p.maxHp) * Math.PI * 2)
+      ctx.arc(p.x, p.y, ring, -Math.PI / 2, -Math.PI / 2 + (p.hp / p.maxHp) * Math.PI * 2)
       ctx.strokeStyle = p.color
       ctx.lineWidth = 2
       ctx.shadowBlur = 0
@@ -1001,18 +1368,105 @@ export class Game {
     }
   }
 
-  private drawLabel(p: PlayerState | RemotePlayer, isSelf: boolean) {
+  private drawLabel(p: PlayerState | RemotePlayer, isSelf: boolean, leader: boolean) {
     const ctx = this.ctx
-    const y = p.y - (isSelf ? 36 : 28)
-    ctx.font = `600 ${isSelf ? 12 : 11}px "JetBrains Mono", monospace`
+    const fontPx = isSelf ? 12 : 11
+    const textWidth = Math.max(28, p.name.length * fontPx * 0.62)
+    const textHeight = fontPx + (leader ? 18 : 0)
+    const spot = placeMarker({
+      x: p.x,
+      y: p.y,
+      textWidth,
+      textHeight,
+      gap: isSelf ? 58 : 48,
+      obstacles: this.labelObstacles(),
+    })
+    ctx.save()
+    ctx.font = `600 ${fontPx}px "JetBrains Mono", monospace`
     ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
     ctx.shadowColor = 'rgba(0,0,0,0.85)'
     ctx.shadowBlur = 4
     ctx.fillStyle = 'rgba(0,0,0,0.7)'
-    ctx.fillText(p.name, p.x + 1, y + 1)
+    ctx.fillText(p.name, spot.x + 1, spot.baseline + 1)
     ctx.fillStyle = p.color
-    ctx.fillText(p.name, p.x, y)
+    ctx.fillText(p.name, spot.x, spot.baseline)
     ctx.shadowBlur = 0
+    if (leader) this.drawCrown(spot.x, spot.baseline - fontPx - 4)
+    ctx.restore()
+  }
+
+  private labelObstacles(): { x: number; y: number; r: number }[] {
+    const obstacles: { x: number; y: number; r: number }[] = []
+    if (this.me.alive) obstacles.push({ x: this.me.x, y: this.me.y, r: 46 })
+    for (const r of this.remotes.values()) {
+      if (r.alive) obstacles.push({ x: r.x, y: r.y, r: 40 })
+    }
+    if (this.drone?.alive) obstacles.push({ x: this.drone.x, y: this.drone.y, r: 26 })
+    return obstacles
+  }
+
+  private drawCrown(x: number, bottom: number) {
+    const ctx = this.ctx
+    const w = 16
+    const h = 10
+    ctx.save()
+    ctx.translate(x, bottom)
+    ctx.fillStyle = '#f6c445'
+    ctx.strokeStyle = '#fff6cc'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(-w / 2, 0)
+    ctx.lineTo(-w / 2, -h * 0.45)
+    ctx.lineTo(-w / 4, -h * 0.15)
+    ctx.lineTo(0, -h)
+    ctx.lineTo(w / 4, -h * 0.15)
+    ctx.lineTo(w / 2, -h * 0.45)
+    ctx.lineTo(w / 2, 0)
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  private drawDrone() {
+    const d = this.drone
+    if (!d?.alive) return
+    const ctx = this.ctx
+    ctx.save()
+    ctx.translate(d.x, d.y)
+    ctx.rotate(d.angle)
+    ctx.beginPath()
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 2
+      const px = Math.cos(a) * 14
+      const py = Math.sin(a) * 14
+      if (i === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.closePath()
+    ctx.fillStyle = 'rgba(184, 255, 60, 0.9)'
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+    ctx.lineWidth = 1.5
+    ctx.fill()
+    ctx.stroke()
+    ctx.restore()
+
+    const spot = placeMarker({
+      x: d.x,
+      y: d.y,
+      textWidth: 46,
+      textHeight: 12,
+      gap: 28,
+      obstacles: this.labelObstacles(),
+    })
+    ctx.save()
+    ctx.font = '600 11px "JetBrains Mono", monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.fillStyle = '#b8ff3c'
+    ctx.fillText('DRONE', spot.x, spot.baseline)
+    ctx.restore()
   }
 
   private drawBullet(b: Bullet) {

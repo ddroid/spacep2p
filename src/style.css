@@ -318,6 +318,14 @@ input:focus {
   box-shadow: 0 0 8px var(--cyan);
 }
 
+.lobby-controls {
+  margin: 0.85rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
 /* —— Game HUD —— */
 
 #game {
@@ -383,7 +391,9 @@ input:focus {
   justify-content: center;
   align-items: center;
   gap: 1px;
-  min-width: 220px;
+  height: auto;
+  min-height: var(--panel-height);
+  min-width: 280px;
   justify-self: center;
   transition:
     border-color var(--transition-panel),
@@ -701,6 +711,70 @@ input:focus {
   color: var(--text);
 }
 
+#edge-hints {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.edge-hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  display: grid;
+  place-items: center;
+}
+
+.edge-arrow {
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 12px solid currentColor;
+  filter: drop-shadow(0 0 5px currentColor);
+}
+
+.edge-crown {
+  display: none;
+  position: absolute;
+  top: -2px;
+  width: 16px;
+  height: 9px;
+  background: #f6c445;
+  clip-path: polygon(0 100%, 0 42%, 25% 68%, 50% 0, 75% 68%, 100% 42%, 100% 100%);
+}
+
+.edge-hint.leader {
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  margin-top: -18px;
+}
+
+.edge-hint.leader .edge-crown {
+  display: block;
+}
+
+.edge-hint.leader .edge-arrow {
+  margin-top: 10px;
+}
+
+#match-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 0, 10, 0.45);
+  pointer-events: none;
+}
+
 #kill-feed {
   position: absolute;
   top: 4.5rem;
@@ -845,7 +919,7 @@ input:focus {
   inset: auto 0 0 0;
   z-index: 7;
   pointer-events: none;
-  padding: 0 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  padding: 0 1rem calc(1.35rem + env(safe-area-inset-bottom, 0px));
   align-items: flex-end;
   justify-content: space-between;
   gap: 0.75rem;
@@ -971,7 +1045,7 @@ input:focus {
   .hud-bottom {
     grid-template-columns: 1fr;
     gap: 0.6rem;
-    padding-bottom: 9.5rem;
+    padding-bottom: calc(13rem + env(safe-area-inset-bottom, 0px));
   }
 
   .desktop-only {
@@ -1023,7 +1097,7 @@ input:focus {
   }
 
   .hud-bottom {
-    padding-bottom: 9.5rem;
+    padding-bottom: calc(13rem + env(safe-area-inset-bottom, 0px));
   }
 
   .desktop-only {
