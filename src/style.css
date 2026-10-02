@@ -1,36 +1,36 @@
 :root {
-  --bg: #05050c;
-  --bg-card: rgba(12, 14, 28, 0.82);
-  --cyan: #00f0ff;
-  --magenta: #ff2d95;
-  --amber: #ff9f1c;
+  --bg: #000000;
+  --bg-card: #0c0820;
+  --cyan: #00ffff;
+  --magenta: #ff0055;
+  --amber: #ffd700;
   --violet: #a78bfa;
-  --text: #e8ecff;
-  --muted: #8b93b8;
-  --border: rgba(125, 140, 190, 0.18);
-  --danger: #ff4d6d;
-  --ok: #5cff9a;
-  --font-display: 'Orbitron', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --font-caption: 10px;
-  --font-ui: 12px;
-  --font-important: 13px;
-  --font-player-name: 12px;
+  --text: #ffffff;
+  --muted: #a39bc0;
+  --border: #ff0055;
+  --panel-surface: #0a061c;
+  --danger: #ff0055;
+  --ok: #00ff66;
+  --radius-panel: 0px;
+  --radius-button: 0px;
+  --radius-key: 0px;
+  --radius-bar: 0px;
+  --font-display: 'Press Start 2P', monospace;
+  --font-mono: 'Press Start 2P', monospace;
+  --font-caption: 8px;
+  --font-ui: 9px;
+  --font-important: 10px;
+  --font-player-name: 9px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --radius-panel: 8px;
-  --radius-button: 6px;
-  --radius-key: 4px;
-  --radius-bar: 3px;
   --panel-height: 40px;
   --edge-padding: 16px;
   --control-gap: 12px;
   --panel-padding: 10px 14px;
-  --panel-surface: rgba(8, 10, 24, 0.78);
   --transition-fast: 100ms;
   --transition-ui: 160ms;
   --transition-panel: 220ms;
@@ -41,6 +41,7 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  image-rendering: pixelated;
 }
 
 html,
@@ -110,14 +111,14 @@ body {
   position: relative;
   width: min(440px, 100%);
   padding: 2.25rem 2rem 1.75rem;
-  border: 1px solid var(--border);
-  border-radius: 20px;
+  border: 3px solid #ff0055;
+  border-radius: 0;
   background: var(--bg-card);
-  backdrop-filter: blur(18px);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
-    0 20px 60px rgba(0, 0, 0, 0.45),
-    0 0 80px rgba(0, 240, 255, 0.06);
+    inset 3px 3px 0 rgba(255, 255, 255, 0.25),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.7),
+    4px 4px 0 #000000;
+  text-shadow: 1px 1px 0 #000;
   text-align: center;
 }
 
@@ -154,22 +155,20 @@ body {
 }
 
 h1 {
-  margin: 0 0 0.5rem;
-  font-size: clamp(1.6rem, 5vw, 2rem);
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.1rem, 4vw, 1.5rem);
   font-weight: 800;
-  letter-spacing: 0.12em;
-  background: linear-gradient(120deg, var(--cyan), #fff 45%, var(--magenta));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  letter-spacing: 0.08em;
+  color: #ffea00;
+  text-shadow: 2px 2px 0 #000;
 }
 
 .tagline {
   margin: 0 0 1.75rem;
-  font-size: 0.78rem;
+  font-size: 0.65rem;
   font-weight: 400;
   letter-spacing: 0.04em;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--muted);
 }
 
@@ -195,19 +194,20 @@ h1 {
 input {
   width: 100%;
   padding: 0.75rem 0.9rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid #ffffff;
+  border-radius: 0;
+  background: #000000;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 0.95rem;
+  font-size: 0.8rem;
   outline: none;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.8);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 input:focus {
-  border-color: var(--cyan);
-  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.12);
+  border-color: #ffd700;
+  box-shadow: 0 0 0 2px #ffd700;
 }
 
 #room-input {
@@ -224,25 +224,30 @@ input:focus {
 
 .btn {
   appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 2px solid #fff;
+  border-radius: 0;
   padding: 0.85rem 1.2rem;
-  background: rgba(0, 240, 255, 0.08);
-  color: var(--text);
+  background: #ff0055;
+  color: #fff;
   font-family: var(--font-display);
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 0.12s, background 0.15s, box-shadow 0.15s, border-color 0.15s;
+  box-shadow: 0 4px 0 #880022;
+  text-shadow: 1px 1px 0 #000;
+  transition: transform 0.08s, box-shadow 0.08s;
 }
 
 .btn:hover:not(:disabled) {
-  background: rgba(0, 240, 255, 0.16);
-  border-color: var(--cyan);
-  box-shadow: 0 0 24px rgba(0, 240, 255, 0.15);
-  transform: translateY(-1px);
+  background: #ff2266;
+  border-color: #ffffff;
+}
+
+.btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #880022;
 }
 
 .btn:disabled {
@@ -251,8 +256,8 @@ input:focus {
 }
 
 .btn.primary {
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(255, 45, 149, 0.2));
-  border-color: rgba(0, 240, 255, 0.45);
+  background: #ff0055;
+  border-color: #ffffff;
 }
 
 .divider {
@@ -371,19 +376,19 @@ input:focus {
   gap: var(--space-2);
   height: var(--panel-height);
   padding: var(--panel-padding);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
+  border: 3px solid #ff0055;
+  border-radius: 0;
   background: var(--panel-surface);
   box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    inset 0 1px rgba(255, 255, 255, 0.025);
-  backdrop-filter: blur(8px);
+    inset 3px 3px 0 rgba(255, 255, 255, 0.25),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.7),
+    4px 4px 0 #000000;
+  text-shadow: 1px 1px 0 #000;
   pointer-events: auto;
 }
 
 .hud-arena {
   justify-self: start;
-  border-color: rgba(0, 240, 255, 0.28);
 }
 
 .hud-status {
@@ -401,11 +406,11 @@ input:focus {
 }
 
 .hud-status.ok {
-  border-color: rgba(92, 255, 154, 0.35);
+  border-color: #00ff66;
 }
 
 .hud-status.error {
-  border-color: rgba(255, 77, 109, 0.45);
+  border-color: #ff0055;
 }
 
 .hud-top-right {
@@ -441,10 +446,20 @@ input:focus {
 }
 
 .status-primary {
-  font-size: var(--font-important);
+  font-size: var(--font-ui);
   font-weight: 700;
-  color: var(--amber);
+  color: #ffea00;
   line-height: 1.1;
+  animation: retroBlink 1s steps(1) infinite;
+}
+
+@keyframes retroBlink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0.2;
+  }
 }
 
 .hud-status.ok .status-primary {
@@ -464,40 +479,39 @@ input:focus {
 
 .btn-tiny {
   pointer-events: auto;
-  border: 1px solid rgba(0, 240, 255, 0.35);
-  border-radius: var(--radius-button);
+  border: 2px solid #fff;
+  border-radius: 0;
   padding: 4px 8px;
-  background: rgba(0, 240, 255, 0.08);
-  color: var(--cyan);
+  background: #ff0055;
+  color: #fff;
   font-family: var(--font-mono);
   font-size: var(--font-caption);
   letter-spacing: 0.08em;
+  box-shadow: 0 3px 0 #880022;
+  text-shadow: 1px 1px 0 #000;
   cursor: pointer;
-  transition:
-    background var(--transition-ui),
-    border-color var(--transition-ui),
-    color var(--transition-ui),
-    transform var(--transition-fast);
+  transition: transform var(--transition-fast);
 }
 
 .btn-tiny:hover {
-  background: rgba(0, 240, 255, 0.18);
-  transform: translateY(-1px);
+  background: #ff2266;
 }
 
 .btn-tiny:active {
-  transform: translateY(0);
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #880022;
 }
 
 .btn-tiny:focus-visible {
-  outline: 2px solid var(--cyan);
+  outline: 2px solid #fff;
   outline-offset: 2px;
 }
 
 .btn-tiny.copied {
-  border-color: rgba(92, 255, 154, 0.55);
-  background: rgba(92, 255, 154, 0.14);
-  color: var(--ok);
+  border-color: #00ff66;
+  background: #00ff66;
+  color: #000000;
+  box-shadow: 0 3px 0 #008833;
 }
 
 .hud-bottom {
@@ -518,13 +532,14 @@ input:focus {
   gap: var(--space-2);
   width: min(280px, 100%);
   padding: var(--panel-padding);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
+  border: 3px solid #ff0055;
+  border-radius: 0;
   background: var(--panel-surface);
   box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    inset 0 1px rgba(255, 255, 255, 0.025);
-  backdrop-filter: blur(8px);
+    inset 3px 3px 0 rgba(255, 255, 255, 0.25),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.7),
+    4px 4px 0 #000000;
+  text-shadow: 1px 1px 0 #000;
 }
 
 .bar-wrap {
@@ -544,17 +559,12 @@ input:focus {
 }
 
 .bar {
-  height: 10px;
-  border-radius: var(--radius-bar);
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.06) 0 6px,
-      transparent 6px 8px
-    ),
-    rgba(255, 255, 255, 0.06);
+  position: relative;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 0;
+  background: #000000;
   overflow: hidden;
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 4px 100%, 0 calc(100% - 4px));
 }
 
 .bar-fill {
@@ -565,30 +575,40 @@ input:focus {
 }
 
 .bar-fill.hp {
-  background: linear-gradient(90deg, var(--danger), #ff8fa3);
-  box-shadow: 0 0 10px rgba(255, 77, 109, 0.5);
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    #ff0044 0 8px,
+    #000000 8px 10px
+  );
+  box-shadow: none;
 }
 
 .bar-fill.hp.flash {
   filter: brightness(2);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.8);
 }
 
 .bar-fill.boost {
-  background: linear-gradient(90deg, var(--amber), #ffe08a);
-  box-shadow: 0 0 10px rgba(255, 159, 28, 0.45);
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    #00ff66 0 8px,
+    #000000 8px 10px
+  );
+  box-shadow: none;
 }
 
 .scoreboard {
   min-width: 220px;
   padding: var(--panel-padding);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
+  border: 3px solid #ff0055;
+  border-radius: 0;
   background: var(--panel-surface);
   box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    inset 0 1px rgba(255, 255, 255, 0.025);
-  backdrop-filter: blur(8px);
+    inset 3px 3px 0 rgba(255, 255, 255, 0.25),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.7),
+    4px 4px 0 #000000;
+  text-shadow: 1px 1px 0 #000;
   font-family: var(--font-mono);
   font-size: var(--font-ui);
 }
@@ -677,13 +697,14 @@ input:focus {
   gap: var(--space-2);
   max-width: 420px;
   padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
+  border: 3px solid #ff0055;
+  border-radius: 0;
   background: var(--panel-surface);
   box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    inset 0 1px rgba(255, 255, 255, 0.025);
-  backdrop-filter: blur(8px);
+    inset 3px 3px 0 rgba(255, 255, 255, 0.25),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.7),
+    4px 4px 0 #000000;
+  text-shadow: 1px 1px 0 #000;
 }
 
 .hint-item {
@@ -788,12 +809,16 @@ input:focus {
 }
 
 .kill-item {
-  padding: 0.4rem 0.65rem;
-  border-left: 2px solid var(--magenta);
-  background: rgba(5, 8, 18, 0.7);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border: 2px solid #ffea00;
+  border-radius: 0;
+  background: #000000;
+  color: #ffea00;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--text);
+  font-size: 8px;
   animation: slideIn 0.25s ease;
   transition: opacity 0.6s;
 }
@@ -815,17 +840,18 @@ input:focus {
 
 #toast {
   position: absolute;
-  top: 5.5rem;
+  top: 6.8rem;
   left: 50%;
   z-index: 4;
   transform: translateX(-50%) translateY(-8px);
   padding: 0.55rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(5, 8, 18, 0.85);
+  border: 2px solid #ffea00;
+  border-radius: 0;
+  background: #000000;
+  box-shadow: 3px 3px 0 #000;
   font-family: var(--font-mono);
   font-size: 0.72rem;
-  color: var(--cyan);
+  color: #ffea00;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s, transform 0.25s;
@@ -848,17 +874,21 @@ input:focus {
 
 .respawn-card {
   padding: 1.5rem 2rem;
-  border: 1px solid rgba(255, 45, 149, 0.4);
-  border-radius: 14px;
-  background: rgba(12, 8, 18, 0.88);
+  border: 3px solid #ff0055;
+  border-radius: 0;
+  background: #0a061c;
   text-align: center;
-  box-shadow: 0 0 40px rgba(255, 45, 149, 0.15);
+  box-shadow:
+    inset 3px 3px 0 rgba(255, 255, 255, 0.25),
+    inset -3px -3px 0 rgba(0, 0, 0, 0.7),
+    4px 4px 0 #000000;
+  text-shadow: 1px 1px 0 #000;
 }
 
 .respawn-card h2 {
   margin: 0 0 0.5rem;
   font-size: 1.1rem;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.1em;
   color: var(--magenta);
 }
 
@@ -874,40 +904,34 @@ input:focus {
   z-index: 6;
   pointer-events: auto;
   height: var(--panel-height);
-  border: 1px solid rgba(255, 77, 109, 0.4);
-  border-radius: var(--radius-panel);
+  border: 2px solid #fff;
+  border-radius: 0;
   padding: var(--panel-padding);
-  background: var(--panel-surface);
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    inset 0 1px rgba(255, 255, 255, 0.025);
-  backdrop-filter: blur(8px);
-  color: var(--danger);
+  background: #ff0055;
+  box-shadow: 0 4px 0 #880022;
+  text-shadow: 1px 1px 0 #000;
+  color: #fff;
   font-family: var(--font-display);
-  font-size: var(--font-ui);
+  font-size: 0.65rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition:
-    background var(--transition-ui),
-    border-color var(--transition-ui),
-    color var(--transition-ui),
-    transform var(--transition-fast);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .btn-leave:hover {
-  background: rgba(255, 77, 109, 0.14);
-  border-color: rgba(255, 77, 109, 0.65);
-  color: #ff8fa3;
-  transform: translateY(-1px);
+  background: #ff2266;
+  border-color: #fff;
+  color: #fff;
 }
 
 .btn-leave:active {
-  transform: translateY(0);
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #880022;
 }
 
 .btn-leave:focus-visible {
-  outline: 2px solid var(--danger);
+  outline: 2px solid #fff;
   outline-offset: 2px;
 }
 
@@ -1126,3 +1150,23 @@ input:focus {
     height: 52px;
   }
 }
+
+/* CRT scanline overlay */
+#crt-overlay {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.22) 0px,
+      rgba(0, 0, 0, 0.22) 2px,
+      transparent 2px,
+      transparent 4px
+    ),
+    radial-gradient(circle at 50% 50%, transparent 65%, rgba(0, 0, 0, 0.6) 100%);
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.7);
+}
+

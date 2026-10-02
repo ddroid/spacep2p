@@ -56,7 +56,7 @@ let lastBoost = 1
 const savedName = localStorage.getItem('nebula-callsign')
 if (savedName) nameInput.value = savedName
 
-// URL room deep-link
+// URL deep-links
 const params = new URLSearchParams(location.search)
 const urlRoom = params.get('room')
 if (urlRoom) roomInput.value = urlRoom.toUpperCase()
@@ -132,7 +132,7 @@ function renderScoreboard(view: ScoreboardView) {
 function renderEdgeHints(hints: EdgeHint[]) {
   if (!edgeHintsEl) return
   const keep = new Set(hints.map((h) => h.id))
-  for (const child of [...edgeHintsEl.children]) {
+  for (const child of Array.from(edgeHintsEl.children)) {
     const id = (child as HTMLElement).dataset.id
     if (!id || !keep.has(id)) child.remove()
   }
@@ -363,8 +363,13 @@ btnCopy.addEventListener('click', async () => {
 })
 
 window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+    return
+  }
+
   if (e.key === 'Escape' && !gameScreen.hidden) {
     void leaveArena(true)
+    return
   }
 })
 

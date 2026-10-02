@@ -1089,20 +1089,7 @@ export class Game {
     const viewW = this.canvas.width / this.dpr
     const viewH = this.canvas.height / this.dpr
 
-    // Deep space backdrop
-    const g = ctx.createRadialGradient(
-      viewW * 0.5,
-      viewH * 0.4,
-      0,
-      viewW * 0.5,
-      viewH * 0.5,
-      Math.max(viewW, viewH) * 0.75,
-    )
-    g.addColorStop(0, '#12122a')
-    g.addColorStop(0.45, '#0a0a18')
-    g.addColorStop(1, '#05050c')
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, viewW, viewH)
+    this.drawBackdrop(viewW, viewH)
 
     ctx.save()
     ctx.translate(-this.cam.x, -this.cam.y)
@@ -1128,74 +1115,18 @@ export class Game {
 
     ctx.restore()
 
-    // Soft vignette around player screen position
-    if (this.me.alive) {
-      const px = this.me.x - this.cam.x
-      const py = this.me.y - this.cam.y
-      const playerGlow = ctx.createRadialGradient(px, py, 20, px, py, Math.min(viewW, viewH) * 0.42)
-      playerGlow.addColorStop(0, 'rgba(80, 70, 180, 0.07)')
-      playerGlow.addColorStop(0.55, 'rgba(0,0,0,0)')
-      playerGlow.addColorStop(1, 'rgba(0,0,0,0.5)')
-      ctx.fillStyle = playerGlow
-      ctx.fillRect(0, 0, viewW, viewH)
-    } else {
-      const vig = ctx.createRadialGradient(
-        viewW / 2,
-        viewH / 2,
-        Math.min(viewW, viewH) * 0.35,
-        viewW / 2,
-        viewH / 2,
-        Math.max(viewW, viewH) * 0.7,
-      )
-      vig.addColorStop(0, 'rgba(0,0,0,0)')
-      vig.addColorStop(1, 'rgba(0,0,0,0.55)')
-      ctx.fillStyle = vig
-      ctx.fillRect(0, 0, viewW, viewH)
-    }
+    this.drawVignetteAndPostFx(viewW, viewH)
 
-    // Crosshair
     if (this.me.alive) {
-      const hx = this.input.mouseX / this.dpr
-      const hy = this.input.mouseY / this.dpr
-      ctx.strokeStyle = 'rgba(0,240,255,0.55)'
-      ctx.lineWidth = 1.5
-      ctx.beginPath()
-      ctx.arc(hx, hy, 10, 0, Math.PI * 2)
-      ctx.moveTo(hx - 16, hy)
-      ctx.lineTo(hx - 6, hy)
-      ctx.moveTo(hx + 6, hy)
-      ctx.lineTo(hx + 16, hy)
-      ctx.moveTo(hx, hy - 16)
-      ctx.lineTo(hx, hy - 6)
-      ctx.moveTo(hx, hy + 6)
-      ctx.lineTo(hx, hy + 16)
-      ctx.stroke()
+      this.drawCrosshair()
     }
   }
 
-  private drawPlayerAura() {
+  private drawBackdrop(viewW: number, viewH: number) {
     const ctx = this.ctx
-    const x = this.me.x
-    const y = this.me.y
-
-    const glow = ctx.createRadialGradient(x, y, 8, x, y, 160)
-    glow.addColorStop(0, 'rgba(80, 70, 180, 0.12)')
-    glow.addColorStop(1, 'rgba(80, 70, 180, 0)')
-    ctx.fillStyle = glow
-    ctx.beginPath()
-    ctx.arc(x, y, 160, 0, Math.PI * 2)
-    ctx.fill()
-
-    // Radar rings
-    for (const radius of [70, 130]) {
-      ctx.beginPath()
-      ctx.arc(x, y, radius, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgba(0, 240, 255, ${radius === 70 ? 0.12 : 0.07})`
-      ctx.lineWidth = 1
-      ctx.setLineDash([4, 10])
-      ctx.stroke()
-      ctx.setLineDash([])
-    }
+    // Pure pitch-black 8-bit arcade space with subtle CRT indigo tint
+    ctx.fillStyle = '#020008'
+    ctx.fillRect(0, 0, viewW, viewH)
   }
 
   private drawStars(viewW: number, viewH: number) {
@@ -1205,164 +1136,128 @@ export class Game {
     const right = this.cam.x + viewW + 40
     const bottom = this.cam.y + viewH + 40
 
+    const colors = ['#ffffff', '#00ffff', '#ffea00', '#ff0055', '#38bdf8']
     for (const s of this.stars) {
       if (s.x < left || s.y < top || s.x > right || s.y > bottom) continue
-      const tw = 0.55 + 0.45 * Math.sin(this.time * 2 + s.twinkle)
-      // Slow parallax offset by depth
       const ox = s.x + (this.cam.x - WORLD.w / 2) * (1 - s.z) * 0.015
       const oy = s.y + (this.cam.y - WORLD.h / 2) * (1 - s.z) * 0.015
-      ctx.globalAlpha = 0.28 + s.z * 0.55 * tw
-      ctx.fillStyle = '#c8d4ff'
-      ctx.beginPath()
-      ctx.arc(ox, oy, s.size * s.z, 0, Math.PI * 2)
-      ctx.fill()
+
+      // Chunky square pixel stars in classic 8-bit palette
+      const colIndex = Math.floor(Math.abs(s.twinkle * 10)) % colors.length
+      const blink = Math.sin(this.time * 6 + s.twinkle * 4) > -0.25
+      if (!blink) continue
+      ctx.fillStyle = colors[colIndex]!
+      const px = Math.floor(ox)
+      const py = Math.floor(oy)
+      const sz = Math.max(2, Math.round(s.size * s.z * 2.2))
+      ctx.fillRect(px, py, sz, sz)
     }
-    ctx.globalAlpha = 1
   }
 
   private drawGrid() {
     const ctx = this.ctx
-    const step = 120
-    const x0 = Math.floor(this.cam.x / step) * step
-    const y0 = Math.floor(this.cam.y / step) * step
     const viewW = this.canvas.width / this.dpr
     const viewH = this.canvas.height / this.dpr
-    const px = this.me.x
-    const py = this.me.y
 
-    for (let x = x0; x < this.cam.x + viewW + step; x += step) {
-      const dist = Math.abs(x - px)
-      const alpha = clamp(0.09 - dist / 4500, 0.02, 0.09)
-      ctx.strokeStyle = `rgba(70, 80, 130, ${alpha})`
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(x, this.cam.y)
-      ctx.lineTo(x, this.cam.y + viewH)
-      ctx.stroke()
-    }
-    for (let y = y0; y < this.cam.y + viewH + step; y += step) {
-      const dist = Math.abs(y - py)
-      const alpha = clamp(0.09 - dist / 4500, 0.02, 0.09)
-      ctx.strokeStyle = `rgba(70, 80, 130, ${alpha})`
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(this.cam.x, y)
-      ctx.lineTo(this.cam.x + viewW, y)
-      ctx.stroke()
-    }
-
-    // Sparse sector labels
-    ctx.font = '500 10px "JetBrains Mono", monospace'
-    ctx.fillStyle = 'rgba(125, 140, 190, 0.28)'
-    ctx.textAlign = 'left'
-    for (let x = x0; x < this.cam.x + viewW + step; x += step * 4) {
-      for (let y = y0; y < this.cam.y + viewH + step; y += step * 4) {
-        const sx = Math.round(x / step)
-        const sy = Math.round(y / step)
-        ctx.fillText(`${sx}.${sy}`, x + 6, y + 14)
+    // Chunky arcade dot matrix grid
+    ctx.fillStyle = 'rgba(0, 255, 128, 0.22)'
+    const dotStep = 60
+    const dx0 = Math.floor(this.cam.x / dotStep) * dotStep
+    const dy0 = Math.floor(this.cam.y / dotStep) * dotStep
+    for (let x = dx0; x < this.cam.x + viewW + dotStep; x += dotStep) {
+      for (let y = dy0; y < this.cam.y + viewH + dotStep; y += dotStep) {
+        ctx.fillRect(x - 1, y - 1, 2, 2)
       }
     }
   }
 
   private drawBoundary() {
     const ctx = this.ctx
-    ctx.strokeStyle = 'rgba(0,240,255,0.25)'
-    ctx.lineWidth = 3
-    ctx.shadowColor = '#00f0ff'
-    ctx.shadowBlur = 12
+    // Chunky 4px stepped dashed arcade caution border
+    ctx.lineWidth = 4
+    ctx.strokeStyle = '#ff0055'
+    ctx.setLineDash([12, 12])
     ctx.strokeRect(4, 4, WORLD.w - 8, WORLD.h - 8)
-    ctx.shadowBlur = 0
+    ctx.setLineDash([])
+    // Corner yellow boxes
+    ctx.fillStyle = '#ffea00'
+    ctx.fillRect(0, 0, 16, 16)
+    ctx.fillRect(WORLD.w - 16, 0, 16, 16)
+    ctx.fillRect(0, WORLD.h - 16, 16, 16)
+    ctx.fillRect(WORLD.w - 16, WORLD.h - 16, 16, 16)
+  }
+
+  private drawPlayerAura() {
+    const ctx = this.ctx
+    const x = this.me.x
+    const y = this.me.y
+
+    // Stepped chunky 8-bit arcade radar ring
+    ctx.strokeStyle = 'rgba(0, 255, 128, 0.35)'
+    ctx.lineWidth = 2
+    ctx.setLineDash([8, 8])
+    ctx.beginPath()
+    ctx.arc(x, y, 90, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
   }
 
   private drawShip(p: PlayerState | RemotePlayer, isSelf: boolean) {
     const ctx = this.ctx
     const scale = isSelf ? 1.2 : 1
-    const speed = len(p.vx, p.vy)
 
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate(p.angle)
     ctx.scale(scale, scale)
 
-    // Directional movement trail
-    if (speed > 40) {
-      const trailLen = Math.min(28, 8 + speed * 0.04)
-      const grad = ctx.createLinearGradient(-6, 0, -6 - trailLen, 0)
-      grad.addColorStop(0, isSelf ? 'rgba(0,240,255,0.35)' : `${p.color}55`)
-      grad.addColorStop(1, 'rgba(0,0,0,0)')
-      ctx.fillStyle = grad
-      ctx.beginPath()
-      ctx.moveTo(-6, 0)
-      ctx.lineTo(-6 - trailLen, 5)
-      ctx.lineTo(-6 - trailLen, -5)
-      ctx.closePath()
-      ctx.fill()
-    }
+    // Retro 8-bit / Pixel Arcade: stepped chunky pixel spacecraft!
+    ctx.shadowBlur = 0 // Clean crisp pixel art
+    const baseColor = p.color
 
-    // Engine glow behind ship
-    ctx.shadowColor = isSelf ? '#00f0ff' : p.color
-    ctx.shadowBlur = p.boosting ? 32 : isSelf ? 22 : 14
+    // Center fuselage pixel block
+    ctx.fillStyle = baseColor
+    ctx.fillRect(-8, -4, 20, 8)
+    // Stepped nose block
+    ctx.fillRect(12, -2, 6, 4)
+    // Stepped left wing
+    ctx.fillRect(-6, -12, 10, 8)
+    ctx.fillRect(-10, -16, 6, 4)
+    // Stepped right wing
+    ctx.fillRect(-6, 4, 10, 8)
+    ctx.fillRect(-10, 12, 6, 4)
 
-    // Hull
-    ctx.beginPath()
-    ctx.moveTo(20, 0)
-    ctx.lineTo(-13, 13)
-    ctx.lineTo(-7, 0)
-    ctx.lineTo(-13, -13)
-    ctx.closePath()
-    ctx.fillStyle = p.color
-    ctx.globalAlpha = 0.95
-    ctx.fill()
-    ctx.globalAlpha = 1
+    // Pixel cockpit (yellow 8-bit square)
+    ctx.fillStyle = isSelf ? '#ffff00' : '#ffffff'
+    ctx.fillRect(2, -2, 4, 4)
 
-    // Thin cyan/white inner highlight for local player
-    ctx.strokeStyle = isSelf ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)'
-    ctx.lineWidth = isSelf ? 2 : 1.4
-    ctx.stroke()
-    if (isSelf) {
-      ctx.beginPath()
-      ctx.moveTo(14, 0)
-      ctx.lineTo(-8, 7)
-      ctx.lineTo(-4, 0)
-      ctx.lineTo(-8, -7)
-      ctx.closePath()
-      ctx.strokeStyle = 'rgba(0,240,255,0.55)'
-      ctx.lineWidth = 1
-      ctx.stroke()
-    }
+    // Pixel highlight border
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1
+    ctx.strokeRect(-8, -4, 20, 8)
 
-    // Cockpit
-    ctx.beginPath()
-    ctx.arc(5, 0, isSelf ? 4 : 3.2, 0, Math.PI * 2)
-    ctx.fillStyle = isSelf ? '#fff' : 'rgba(255,255,255,0.75)'
-    ctx.shadowBlur = isSelf ? 12 : 8
-    ctx.fill()
-
-    // Thrust flame
+    // 8-bit flickering stepped pixel thruster flame
     if (p.thrusting) {
-      const flick = 10 + Math.random() * 12 * (p.boosting ? 1.6 : 1)
-      ctx.beginPath()
-      ctx.moveTo(-7, 0)
-      ctx.lineTo(-7 - flick, 6)
-      ctx.lineTo(-12, 0)
-      ctx.lineTo(-7 - flick, -6)
-      ctx.closePath()
-      ctx.fillStyle = p.boosting ? '#ff9f1c' : '#fff'
-      ctx.shadowColor = p.boosting ? '#ff9f1c' : p.color
-      ctx.shadowBlur = 16
-      ctx.fill()
+      const flick = (Math.floor(this.time * 20) % 3) * 3
+      // Red outer flame block
+      ctx.fillStyle = '#ff0044'
+      ctx.fillRect(-14 - flick, -4, 6 + flick, 8)
+      // Yellow inner flame block
+      ctx.fillStyle = '#ffea00'
+      ctx.fillRect(-11 - flick * 0.6, -2, 4 + flick * 0.6, 4)
     }
 
     ctx.restore()
 
+    // HP Ring
     if (p.hp < p.maxHp) {
-      const ring = (isSelf ? 36 : 30)
+      const ring = isSelf ? 36 : 30
       ctx.beginPath()
       ctx.arc(p.x, p.y, ring, -Math.PI / 2, -Math.PI / 2 + (p.hp / p.maxHp) * Math.PI * 2)
       ctx.strokeStyle = p.color
       ctx.lineWidth = 2
       ctx.shadowBlur = 0
-      ctx.globalAlpha = 0.7
+      ctx.globalAlpha = 0.75
       ctx.stroke()
       ctx.globalAlpha = 1
     }
@@ -1371,7 +1266,7 @@ export class Game {
   private drawLabel(p: PlayerState | RemotePlayer, isSelf: boolean, leader: boolean) {
     const ctx = this.ctx
     const fontPx = isSelf ? 12 : 11
-    const textWidth = Math.max(28, p.name.length * fontPx * 0.62)
+    const textWidth = Math.max(28, p.name.length * fontPx * 0.65)
     const textHeight = fontPx + (leader ? 18 : 0)
     const spot = placeMarker({
       x: p.x,
@@ -1381,18 +1276,17 @@ export class Game {
       gap: isSelf ? 58 : 48,
       obstacles: this.labelObstacles(),
     })
+
     ctx.save()
-    ctx.font = `600 ${fontPx}px "JetBrains Mono", monospace`
+    // Chunky 8-bit arcade label
+    ctx.font = '8px "Press Start 2P", monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'bottom'
-    ctx.shadowColor = 'rgba(0,0,0,0.85)'
-    ctx.shadowBlur = 4
-    ctx.fillStyle = 'rgba(0,0,0,0.7)'
+    ctx.fillStyle = '#000000'
     ctx.fillText(p.name, spot.x + 1, spot.baseline + 1)
-    ctx.fillStyle = p.color
+    ctx.fillStyle = isSelf ? '#ffff00' : p.color
     ctx.fillText(p.name, spot.x, spot.baseline)
-    ctx.shadowBlur = 0
-    if (leader) this.drawCrown(spot.x, spot.baseline - fontPx - 4)
+    if (leader) this.drawCrown(spot.x, spot.baseline - 10)
     ctx.restore()
   }
 
@@ -1408,24 +1302,16 @@ export class Game {
 
   private drawCrown(x: number, bottom: number) {
     const ctx = this.ctx
-    const w = 16
-    const h = 10
     ctx.save()
     ctx.translate(x, bottom)
-    ctx.fillStyle = '#f6c445'
-    ctx.strokeStyle = '#fff6cc'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(-w / 2, 0)
-    ctx.lineTo(-w / 2, -h * 0.45)
-    ctx.lineTo(-w / 4, -h * 0.15)
-    ctx.lineTo(0, -h)
-    ctx.lineTo(w / 4, -h * 0.15)
-    ctx.lineTo(w / 2, -h * 0.45)
-    ctx.lineTo(w / 2, 0)
-    ctx.closePath()
-    ctx.fill()
-    ctx.stroke()
+
+    // 8-bit stepped pixel crown
+    ctx.fillStyle = '#ffea00'
+    ctx.fillRect(-6, -8, 2, 8)
+    ctx.fillRect(-2, -10, 4, 10)
+    ctx.fillRect(4, -8, 2, 8)
+    ctx.fillRect(-6, -2, 12, 2)
+
     ctx.restore()
   }
 
@@ -1436,20 +1322,19 @@ export class Game {
     ctx.save()
     ctx.translate(d.x, d.y)
     ctx.rotate(d.angle)
-    ctx.beginPath()
-    for (let i = 0; i < 6; i++) {
-      const a = (Math.PI / 3) * i - Math.PI / 2
-      const px = Math.cos(a) * 14
-      const py = Math.sin(a) * 14
-      if (i === 0) ctx.moveTo(px, py)
-      else ctx.lineTo(px, py)
-    }
-    ctx.closePath()
-    ctx.fillStyle = 'rgba(184, 255, 60, 0.9)'
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)'
-    ctx.lineWidth = 1.5
-    ctx.fill()
-    ctx.stroke()
+
+    // 8-bit space invader / UFO pixel drone
+    ctx.fillStyle = '#00ff66'
+    ctx.fillRect(-6, -8, 12, 4)
+    ctx.fillRect(-10, -4, 20, 6)
+    ctx.fillRect(-12, 2, 24, 4)
+    ctx.fillRect(-8, 6, 4, 3)
+    ctx.fillRect(4, 6, 4, 3)
+    // Red pixel eyes
+    ctx.fillStyle = '#ff0044'
+    ctx.fillRect(-4, -1, 3, 3)
+    ctx.fillRect(1, -1, 3, 3)
+
     ctx.restore()
 
     const spot = placeMarker({
@@ -1461,45 +1346,20 @@ export class Game {
       obstacles: this.labelObstacles(),
     })
     ctx.save()
-    ctx.font = '600 11px "JetBrains Mono", monospace'
+    ctx.font = '8px "Press Start 2P", monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'bottom'
-    ctx.fillStyle = '#b8ff3c'
+    ctx.fillStyle = '#00ff66'
     ctx.fillText('DRONE', spot.x, spot.baseline)
     ctx.restore()
   }
 
   private drawBullet(b: Bullet) {
     const ctx = this.ctx
-    const sp = len(b.vx, b.vy) || 1
-    const tx = (b.vx / sp) * 7
-    const ty = (b.vy / sp) * 7
-
     ctx.save()
-    // Trail with opacity falloff
-    const grad = ctx.createLinearGradient(b.x - tx * 1.6, b.y - ty * 1.6, b.x, b.y)
-    grad.addColorStop(0, 'rgba(0,0,0,0)')
-    grad.addColorStop(0.45, `${b.color}55`)
-    grad.addColorStop(1, b.color)
-    ctx.strokeStyle = grad
-    ctx.lineWidth = 2
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.moveTo(b.x - tx * 1.6, b.y - ty * 1.6)
-    ctx.lineTo(b.x, b.y)
-    ctx.stroke()
-
-    // Bright white core + weapon-color glow
-    ctx.shadowColor = b.color
-    ctx.shadowBlur = 14
-    ctx.fillStyle = '#fff'
-    ctx.beginPath()
-    ctx.arc(b.x, b.y, 2.4, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.shadowBlur = 7
-    ctx.beginPath()
-    ctx.arc(b.x, b.y, 1.2, 0, Math.PI * 2)
-    ctx.fill()
+    // Chunky 8-bit square pixel pellet
+    ctx.fillStyle = Math.sin(this.time * 30) > 0 ? '#ffea00' : '#ffffff'
+    ctx.fillRect(Math.floor(b.x - 3), Math.floor(b.y - 3), 6, 6)
     ctx.restore()
   }
 
@@ -1507,15 +1367,51 @@ export class Game {
     const ctx = this.ctx
     const a = clamp(p.life / p.maxLife, 0, 1)
     ctx.globalAlpha = a
-    if (p.glow) {
-      ctx.shadowColor = p.color
-      ctx.shadowBlur = 8
-    }
+
+    // Chunky 8-bit square pixel explosion debris
     ctx.fillStyle = p.color
-    ctx.beginPath()
-    ctx.arc(p.x, p.y, p.size * a, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.shadowBlur = 0
+    const sz = Math.max(2, Math.round(p.size * a * 1.5))
+    ctx.fillRect(Math.floor(p.x - sz / 2), Math.floor(p.y - sz / 2), sz, sz)
+
     ctx.globalAlpha = 1
   }
+
+  private drawVignetteAndPostFx(viewW: number, viewH: number) {
+    const ctx = this.ctx
+
+    // 8-bit CRT arcade scanlines drawn on canvas
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)'
+    for (let y = 0; y < viewH; y += 4) {
+      ctx.fillRect(0, y, viewW, 1.5)
+    }
+
+    // Heavy dark CRT corner curvature vignette
+    const crtVig = ctx.createRadialGradient(
+      viewW / 2,
+      viewH / 2,
+      Math.min(viewW, viewH) * 0.45,
+      viewW / 2,
+      viewH / 2,
+      Math.max(viewW, viewH) * 0.72,
+    )
+    crtVig.addColorStop(0, 'rgba(0,0,0,0)')
+    crtVig.addColorStop(1, 'rgba(0,0,0,0.85)')
+    ctx.fillStyle = crtVig
+    ctx.fillRect(0, 0, viewW, viewH)
+  }
+
+  private drawCrosshair() {
+    const ctx = this.ctx
+    const hx = this.input.mouseX / this.dpr
+    const hy = this.input.mouseY / this.dpr
+
+    // Chunky 8-bit arcade pixel crosshair
+    ctx.fillStyle = '#ffea00'
+    ctx.fillRect(Math.floor(hx - 2), Math.floor(hy - 2), 4, 4)
+    ctx.fillRect(Math.floor(hx - 14), Math.floor(hy - 1), 7, 2)
+    ctx.fillRect(Math.floor(hx + 7), Math.floor(hy - 1), 7, 2)
+    ctx.fillRect(Math.floor(hx - 1), Math.floor(hy - 14), 2, 7)
+    ctx.fillRect(Math.floor(hx - 1), Math.floor(hy + 7), 2, 7)
+  }
 }
+
